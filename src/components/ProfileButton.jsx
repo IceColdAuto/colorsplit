@@ -4,23 +4,7 @@ import { AVATAR_COLORS, saveProfile } from '../lib/profile'
 import { updateCloudProfile, getUserProfile } from '../lib/auth'
 import useAuth from '../hooks/useAuth'
 import AccountSection from './AccountSection'
-
-function PencilTip({ size = 32 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 44 44" fill="none" aria-hidden="true">
-      {/* Eraser cap */}
-      <rect x="13" y="3" width="18" height="9" rx="4.5" fill="rgba(255,255,255,0.62)" />
-      {/* Ferrule band */}
-      <rect x="13" y="11" width="18" height="3.5" fill="rgba(0,0,0,0.11)" />
-      {/* Shine on body */}
-      <rect x="16" y="16" width="6" height="12" rx="3" fill="rgba(255,255,255,0.28)" />
-      {/* Wood reveal */}
-      <polygon points="13,30 22,42 31,30" fill="#EFC88A" />
-      {/* Graphite tip */}
-      <polygon points="17,35 22,42 27,35" fill="#8C7B75" />
-    </svg>
-  )
-}
+import PencilTip from './PencilTip'
 
 export default function ProfileButton({ profile, onProfileChange }) {
   const { user, profile: authProfile } = useAuth()

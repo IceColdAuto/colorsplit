@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AVATARS, AVATAR_COLORS, saveProfile, getDefaultProfileName } from '../lib/profile'
+import { AVATAR_COLORS, saveProfile, getDefaultProfileName } from '../lib/profile'
+import PencilTip from './PencilTip'
 
 export default function ProfileSetup({ onComplete }) {
-  const [step, setStep] = useState(1)  // 1: name, 2: avatar+color
+  const [step, setStep] = useState(1)  // 1: name, 2: color
   const [username, setUsername] = useState('')
-  const [avatarId, setAvatarId] = useState('cat')
   const [colorId, setColorId] = useState('peach')
 
-  const selectedAvatar = AVATARS.find(a => a.id === avatarId) || AVATARS[0]
   const selectedColor = AVATAR_COLORS.find(c => c.id === colorId) || AVATAR_COLORS[0]
 
   function handleNext() {
@@ -16,8 +15,8 @@ export default function ProfileSetup({ onComplete }) {
       setStep(2)
     } else {
       const name = username.trim() || getDefaultProfileName()
-      saveProfile({ username: name, avatarId, colorId })
-      onComplete({ username: name, avatarId, colorId })
+      saveProfile({ username: name, avatarId: 'cat', colorId })
+      onComplete({ username: name, avatarId: 'cat', colorId })
     }
   }
 
@@ -38,18 +37,18 @@ export default function ProfileSetup({ onComplete }) {
 
         {/* Header */}
         <div className="text-center mb-6">
-          {/* Live avatar preview */}
+          {/* Pencil preview — color updates live */}
           <div
-            className="w-20 h-20 rounded-[22px] flex items-center justify-center text-4xl mx-auto mb-4 shadow-lifted"
+            className="w-20 h-20 rounded-[22px] flex items-center justify-center mx-auto mb-4 shadow-lifted overflow-hidden"
             style={{ background: selectedColor.hex }}
           >
-            {selectedAvatar.emoji}
+            <PencilTip size={48} />
           </div>
           <h2 className="font-display text-2xl text-ink mb-1" style={{ fontFamily: "'Fredoka One', cursive" }}>
-            {step === 1 ? "What's your name?" : 'Pick your look!'}
+            {step === 1 ? "What's your name?" : 'Choose your pencil'}
           </h2>
           <p className="text-ink/45 font-body text-sm">
-            {step === 1 ? 'This shows up when you play with others.' : 'Choose your avatar and color.'}
+            {step === 1 ? 'This shows up when you play with others.' : 'Pick a color for your ColorSplit pencil.'}
           </p>
         </div>
 
@@ -81,25 +80,7 @@ export default function ProfileSetup({ onComplete }) {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
             >
-              {/* Avatar grid */}
-              <p className="text-ink/40 text-xs font-bold uppercase tracking-wider font-body mb-2">Avatar</p>
-              <div className="grid grid-cols-4 gap-2 mb-4">
-                {AVATARS.map(av => (
-                  <button
-                    key={av.id}
-                    onClick={() => setAvatarId(av.id)}
-                    className={`rounded-2xl py-2 flex flex-col items-center gap-1 transition-all active:scale-95 border-2 ${
-                      avatarId === av.id ? 'border-blue-500 bg-blue-50' : 'border-transparent bg-white'
-                    }`}
-                  >
-                    <span className="text-2xl">{av.emoji}</span>
-                    <span className="text-xs font-body text-ink/50">{av.label}</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Color grid */}
-              <p className="text-ink/40 text-xs font-bold uppercase tracking-wider font-body mb-2">Color</p>
+              <p className="text-ink/40 text-xs font-bold uppercase tracking-wider font-body mb-2">Pencil color</p>
               <div className="flex gap-2 mb-4">
                 {AVATAR_COLORS.map(c => (
                   <button
@@ -131,7 +112,7 @@ export default function ProfileSetup({ onComplete }) {
             onClick={handleNext}
             className="flex-1 bg-blue-500 text-white font-bold py-4 rounded-2xl shadow-lifted active:scale-95 transition-all font-body text-lg"
           >
-            {step === 1 ? 'Next →' : "Let's Play! 🎨"}
+            {step === 1 ? 'Next →' : 'Start coloring'}
           </button>
         </div>
 
