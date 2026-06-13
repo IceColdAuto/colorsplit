@@ -56,6 +56,7 @@ export default function HomeScreen() {
       // Room gone, full, or already started — retire the invite so it
       // doesn't keep failing on the home screen.
       setInviteError(e.message || 'Could not join that room')
+      setTimeout(() => setInviteError(''), 4000)
       respondToInvite(user.uid, inv.id, 'expired').catch(() => {})
       setInviteBusy(null)
     }
@@ -253,12 +254,25 @@ export default function HomeScreen() {
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                className="w-full rounded-[22px] p-4 border-2 border-blue-300 bg-blue-50"
-                style={{ boxShadow: '0 4px 18px rgba(37,99,235,0.16)' }}
+                className="w-full rounded-[22px] p-4 bg-white"
+                style={{ border: '2px solid rgba(139,110,248,0.28)', boxShadow: '0 4px 18px rgba(139,110,248,0.14)' }}
               >
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-[44px] h-[44px] rounded-[14px] bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <span className="text-[22px] leading-none">💌</span>
+                  <div
+                    className="w-[44px] h-[44px] rounded-[14px] flex items-center justify-center flex-shrink-0"
+                    style={{ background: 'linear-gradient(135deg, #EDE0FF 0%, #D5C8FF 100%)' }}
+                  >
+                    {/* Two-pencil icon — ColorSplit identity */}
+                    <svg width="28" height="24" viewBox="0 0 32 28" fill="none" aria-hidden="true">
+                      <rect x="1" y="1" width="13" height="19" rx="3.5" fill="#C4B5FD"/>
+                      <rect x="1" y="1" width="13" height="5.5" rx="3.5" fill="rgba(255,255,255,0.55)"/>
+                      <polygon points="1,20 7.5,27 14,20" fill="#EFC990"/>
+                      <polygon points="4.5,23 7.5,27 10.5,23" fill="#8C7B75"/>
+                      <rect x="19" y="1" width="12" height="19" rx="3.5" fill="#93C5FD"/>
+                      <rect x="19" y="1" width="12" height="5.5" rx="3.5" fill="rgba(255,255,255,0.55)"/>
+                      <polygon points="19,20 25,27 31,20" fill="#EFC990"/>
+                      <polygon points="22,23 25,27 28,23" fill="#8C7B75"/>
+                    </svg>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-body font-bold text-ink text-[14px] leading-tight">
@@ -280,9 +294,10 @@ export default function HomeScreen() {
                   <button
                     onClick={() => handleJoinInvite(inv)}
                     disabled={!!inviteBusy}
-                    className="flex-[2] bg-blue-500 text-white font-bold py-2.5 rounded-xl font-body text-sm active:scale-95 transition-transform shadow-lifted disabled:opacity-60"
+                    className="flex-[2] text-white font-bold py-2.5 rounded-xl font-body text-sm active:scale-95 transition-transform shadow-lifted disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg, #8B6EF8 0%, #3B6CF6 100%)' }}
                   >
-                    {inviteBusy === inv.id ? 'Joining…' : '🎨 Join'}
+                    {inviteBusy === inv.id ? 'Joining…' : 'Join room →'}
                   </button>
                 </div>
               </motion.div>

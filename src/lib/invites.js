@@ -52,10 +52,21 @@ export function subscribeToIncomingInvites(uid, callback) {
   onValue(r, snap => {
     const val = snap.val() || {}
     const now = Date.now()
-    const list = Object.entries(val)
+    const pending = Object.entries(val)
       .map(([id, inv]) => ({ id, ...inv }))
       .filter(inv => inv.status === 'pending' && (inv.expiresAt || 0) > now)
-      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    // Deduplicate: if the same sender invited the same recipient to the same
+    // room multiple times (e.g. after leaving and re-entering the lobby),
+    // show only the most recent invite for each sender+room pair.
+    const seen = new Map()
+    pending.forEach(inv => {
+      const key = `${inv.fromUid}_${inv.sessionCode}`
+      const existing = seen.get(key)
+      if (!existing || (inv.createdAt || 0) > (existing.createdAt || 0)) {
+        seen.set(key, inv)
+      }
+    })
+    const list = Array.from(seen.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
     callback(list)
   }, () => callback([]))
   return () => off(r)
