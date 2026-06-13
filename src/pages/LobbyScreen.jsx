@@ -228,8 +228,14 @@ export default function LobbyScreen() {
             Room Code
           </p>
           <div
-            className="text-center font-display text-6xl tracking-widest text-blue-500 mb-4 select-all"
-            style={{ fontFamily: "'Fredoka One', cursive" }}
+            className="text-center font-display text-6xl tracking-widest mb-4 select-all"
+            style={{
+              fontFamily: "'Fredoka One', cursive",
+              background: 'linear-gradient(135deg, #8B6EF8 0%, #4A9EFF 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}
           >
             {code}
           </div>
@@ -237,7 +243,8 @@ export default function LobbyScreen() {
             <button
               type="button"
               onClick={copyCode}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 bg-blue-50 text-blue-600 font-semibold py-2.5 px-4 rounded-xl font-body text-sm active:scale-95 transition-all"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 font-semibold py-2.5 px-4 rounded-xl font-body text-sm active:scale-95 transition-all border border-[#D4C8FF]"
+              style={{ background: '#F0EBFF', color: '#7B5CF0' }}
             >
               {feedback?.kind === 'code' ? (
                 'Copied!'
@@ -248,7 +255,8 @@ export default function LobbyScreen() {
             <button
               type="button"
               onClick={shareLink}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 bg-blue-500 text-white font-semibold py-2.5 px-4 rounded-xl font-body text-sm active:scale-95 transition-all shadow-lifted"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 text-white font-semibold py-2.5 px-4 rounded-xl font-body text-sm active:scale-95 transition-all shadow-lifted"
+              style={{ background: 'linear-gradient(135deg, #8B6EF8 0%, #3B6CF6 100%)' }}
             >
               {feedback?.kind === 'shared' ? 'Shared!' : feedback?.kind === 'link' ? 'Link copied!' : <><IconSend /> Invite</>}
             </button>
@@ -256,7 +264,8 @@ export default function LobbyScreen() {
           <button
             type="button"
             onClick={copyLink}
-            className="w-full mt-2 inline-flex items-center justify-center gap-1.5 text-ink/45 font-body text-xs font-semibold py-1.5 active:scale-95 transition-transform"
+            className="w-full mt-2 inline-flex items-center justify-center gap-1.5 font-body text-xs font-semibold py-1.5 active:scale-95 transition-transform"
+            style={{ color: '#9B89F0' }}
           >
             {feedback?.kind === 'link' ? 'Invite link copied!' : <><IconLink /> Copy invite link</>}
           </button>
@@ -286,7 +295,7 @@ export default function LobbyScreen() {
                 value={inviteUrl}
                 onFocus={selectManualLink}
                 onClick={selectManualLink}
-                className="w-full text-center bg-cream rounded-xl px-3 py-2 border border-ink/15 text-ink text-xs font-body select-all outline-none focus:border-blue-400"
+                className="w-full text-center bg-cream rounded-xl px-3 py-2 border border-ink/15 text-ink text-xs font-body select-all outline-none focus:border-purple-400"
               />
               <p className="text-center text-ink/40 font-body text-[11px] mt-1">Tap the link, then copy it</p>
             </div>
@@ -317,8 +326,9 @@ export default function LobbyScreen() {
                             ? 'bg-green-50 text-green-600'
                             : state === 'failed'
                               ? 'bg-red-50 text-red-500'
-                              : 'bg-blue-50 text-blue-600'
+                              : ''
                         }`}
+                        style={!state || state === 'sending' ? { background: '#F0EBFF', color: '#7B5CF0' } : undefined}
                       >
                         {state === 'sent' ? 'Invited' : state === 'sending' ? '…' : state === 'failed' ? 'Retry' : 'Invite'}
                       </button>
@@ -360,7 +370,7 @@ export default function LobbyScreen() {
                 <PencilAvatar colorId={player.colorId} size={32} />
                 <span className="font-semibold font-body text-ink text-sm">{player.name}</span>
                 {pid === session?.hostId && (
-                  <span className="ml-auto text-xs text-blue-500 font-semibold font-body bg-blue-50 px-2 py-0.5 rounded-lg">Host</span>
+                  <span className="ml-auto text-xs font-semibold font-body px-2 py-0.5 rounded-lg" style={{ background: '#F0EBFF', color: '#7B5CF0' }}>Host</span>
                 )}
               </motion.div>
             ))}
@@ -384,14 +394,15 @@ export default function LobbyScreen() {
           <button
             onClick={handleStart}
             disabled={!canStart}
-            className="w-full bg-blue-500 text-white font-bold py-4 rounded-2xl shadow-lifted active:scale-95 transition-all font-body text-lg disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full text-white font-bold py-4 rounded-2xl shadow-lifted active:scale-95 transition-all font-body text-lg disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ background: 'linear-gradient(135deg, #8B6EF8 0%, #3B6CF6 100%)' }}
           >
             {canStart ? 'Start Game' : 'Waiting for players…'}
           </button>
         ) : (
-          <p className="text-center text-ink/40 font-body text-sm mt-2">
-            Waiting for the host to start…
-          </p>
+          <div className="flex items-center justify-center mt-2 py-3 px-4 rounded-2xl" style={{ background: '#F0EBFF' }}>
+            <span className="font-body text-sm font-semibold" style={{ color: '#9B89F0' }}>Waiting for the host to start…</span>
+          </div>
         )}
       </div>
 
