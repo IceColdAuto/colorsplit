@@ -1,0 +1,347 @@
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { subscribeToSession, updateSessionStatus, getOrCreatePlayerId, setupPresence, leaveRoom } from '../lib/session'
+import { AVATARS, AVATAR_COLORS } from '../lib/profile'
+import { copyText, shareInvite } from '../lib/share'
+import useAuth from '../hooks/useAuth'
+import { subscribeToFriends } from '../lib/friends'
+import { sendInvite } from '../lib/invites'
+import LeaveRoomModal from '../components/LeaveRoomModal'
+
+export default function LobbyScreen() {
+  const { code } = useParams()
+  const navigate = useNavigate()
+  const [session, setSession] = useState(null)
+  // feedback: null | { kind: 'code'|'link'|'shared'|'manual', msg }
+  const [feedback, setFeedback] = useState(null)
+  const [showManualLink, setShowManualLink] = useState(false)
+  const playerId = getOrCreatePlayerId()
+  const { user, profile } = useAuth()
+  const [friends, setFriends] = useState([])
+  const [invitedUids, setInvitedUids] = useState({}) // uid → 'sending' | 'sent' | 'failed'
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+  const leavingRef = useRef(false)
+
+  useEffect(() => {
+    if (!user) { setFriends([]); return }
+    return subscribeToFriends(user.uid, setFriends)
+  }, [user])
+
+  // Never let the current user appear in their own invite list — filter by
+  // both auth uid and friend code (defense in depth against any stale self
+  // entry). subscribeToFriends already drops uid matches; this also covers a
+  // historical entry that happens to carry my own friend code.
+  const invitableFriends = friends.filter(
+    f => f.uid !== user?.uid && (!profile?.friendCode || f.friendCode !== profile.friendCode),
+  )
+
+  const isHost = session?.hostId === playerId
+
+  // Back to Home from the waiting room. Confirm first (avoid accidental taps
+  // losing the room), then leave cleanly (marks me gone and clears the
+  // resumable-room pointer) for both host and guest, and navigate explicitly
+  // to Home — never relies on browser history.
+  async function handleLeaveConfirm() {
+    if (leavingRef.current) return
+    leavingRef.current = true
+    setShowLeaveConfirm(false)
+    try { await leaveRoom(code, playerId) } catch {}
+    navigate('/', { replace: true })
+  }
+
+  async function inviteFriendInApp(friend) {
+    // Defensive: the current user can never invite themselves.
+    if (!friend?.uid || friend.uid === user?.uid) return
+    if (invitedUids[friend.uid] === 'sending' || invitedUids[friend.uid] === 'sent') return
+    setInvitedUids(s => ({ ...s, [friend.uid]: 'sending' }))
+    try {
+      await sendInvite({
+        fromUid: user.uid,
+        fromDisplayName: profile?.displayName || 'A friend',
+        toUid: friend.uid,
+        sessionCode: code,
+      })
+      setInvitedUids(s => ({ ...s, [friend.uid]: 'sent' }))
+    } catch {
+      setInvitedUids(s => ({ ...s, [friend.uid]: 'failed' }))
+    }
+  }
+
+  const inviteUrl = `${window.location.origin}/join/${code}`
+
+  function flashFeedback(kind, msg) {
+    setFeedback({ kind, msg })
+    setTimeout(() => setFeedback(f => (f?.kind === kind ? null : f)), 2600)
+  }
+
+  useEffect(() => setupPresence(code, playerId), [code, playerId])
+
+  useEffect(() => {
+    const unsub = subscribeToSession(code, (data) => {
+      if (!data) return
+      setSession(data)
+      if (data.status === 'picking') navigate(`/session/${code}/pick`)
+      if (data.status === 'settings') navigate(`/session/${code}/settings`)
+      if (data.status === 'tearing') navigate(`/session/${code}/tear`)
+      if (data.status === 'ready_check') navigate(`/session/${code}/ready`)
+      if (data.status === 'coloring') navigate(`/session/${code}/color`)
+    })
+    return unsub
+  }, [code])
+
+  const players = session
+    ? Object.entries(session.players || {}).filter(([, p]) => p.name && !p.left)
+    : []
+  const canStart = players.length >= 2
+
+  async function handleStart() {
+    await updateSessionStatus(code, 'picking')
+    navigate(`/session/${code}/pick`)
+  }
+
+  async function copyCode() {
+    const ok = await copyText(code)
+    if (ok) flashFeedback('code', '✓ Room code copied')
+    else flashFeedback('manual', 'Could not copy — tap the code to select it')
+  }
+
+  // "Invite friend" — native share first (iOS/Android/PWA), then clipboard,
+  // then reveal the link for manual copy. Always gives the user feedback.
+  async function shareLink() {
+    const result = await shareInvite({
+      url: inviteUrl,
+      title: 'ColorSplit',
+      text: 'Come color with me on ColorSplit! 🎨',
+    })
+    if (result === 'shared') flashFeedback('shared', '✓ Share sheet opened')
+    else if (result === 'copied') flashFeedback('link', '✓ Invite link copied')
+    else { setShowManualLink(true); flashFeedback('manual', 'Could not copy link — tap to copy manually') }
+  }
+
+  async function copyLink() {
+    const ok = await copyText(inviteUrl)
+    if (ok) flashFeedback('link', '✓ Invite link copied')
+    else { setShowManualLink(true); flashFeedback('manual', 'Could not copy link — tap to copy manually') }
+  }
+
+  function selectManualLink(e) {
+    e.target.select()
+    e.target.setSelectionRange(0, inviteUrl.length)
+  }
+
+  return (
+    <motion.div
+      className="min-h-screen bg-cream flex flex-col items-center justify-center px-6 py-12"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+    >
+      <div className="w-full max-w-sm">
+        {/* Back to Home — explicit, reliable for host and guest */}
+        <button
+          type="button"
+          onClick={() => setShowLeaveConfirm(true)}
+          className="mb-4 inline-flex items-center gap-1.5 text-ink/50 font-body text-sm font-semibold active:scale-95 transition-transform"
+          aria-label="Back to home"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          Back
+        </button>
+
+        <div className="text-center mb-8">
+          <div className="text-5xl mb-3">👋</div>
+          <h1 className="font-display text-4xl text-ink mb-1" style={{ fontFamily: "'Fredoka One', cursive" }}>
+            Waiting Room
+          </h1>
+          <p className="text-ink/50 font-body text-sm">Share the code with a friend</p>
+        </div>
+
+        {/* Code card */}
+        <div className="bg-white rounded-3xl shadow-deep p-6 border border-ink/5 mb-4">
+          <p className="text-ink/40 text-xs font-semibold uppercase tracking-wider font-body mb-1 text-center">
+            Room Code
+          </p>
+          <div
+            className="text-center font-display text-6xl tracking-widest text-blue-500 mb-4 select-all"
+            style={{ fontFamily: "'Fredoka One', cursive" }}
+          >
+            {code}
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={copyCode}
+              className="flex-1 bg-blue-50 text-blue-600 font-semibold py-2.5 px-4 rounded-xl font-body text-sm active:scale-95 transition-all"
+            >
+              {feedback?.kind === 'code' ? '✓ Copied!' : '📋 Copy code'}
+            </button>
+            <button
+              type="button"
+              onClick={shareLink}
+              className="flex-1 bg-blue-500 text-white font-semibold py-2.5 px-4 rounded-xl font-body text-sm active:scale-95 transition-all shadow-lifted"
+            >
+              {feedback?.kind === 'shared' ? '✓ Shared!' : feedback?.kind === 'link' ? '✓ Link copied!' : '💌 Invite friend'}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={copyLink}
+            className="w-full mt-2 text-ink/45 font-body text-xs font-semibold py-1.5 active:scale-95 transition-transform"
+          >
+            {feedback?.kind === 'link' ? '✓ Invite link copied!' : '🔗 Copy invite link'}
+          </button>
+
+          {/* Transient feedback toast */}
+          <AnimatePresence>
+            {feedback && (
+              <motion.p
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className={`text-center font-body text-xs font-semibold mt-2 ${
+                  feedback.kind === 'manual' ? 'text-amber-600' : 'text-green-600'
+                }`}
+              >
+                {feedback.msg}
+              </motion.p>
+            )}
+          </AnimatePresence>
+
+          {/* Manual fallback — shown only when copy/share could not work.
+              The link is visible and selectable so the user can copy by hand. */}
+          {showManualLink && (
+            <div className="mt-2.5">
+              <input
+                type="text"
+                readOnly
+                value={inviteUrl}
+                onFocus={selectManualLink}
+                onClick={selectManualLink}
+                className="w-full text-center bg-cream rounded-xl px-3 py-2 border border-ink/15 text-ink text-xs font-body select-all outline-none focus:border-blue-400"
+              />
+              <p className="text-center text-ink/40 font-body text-[11px] mt-1">Tap the link, then copy it</p>
+            </div>
+          )}
+        </div>
+
+        {/* In-app friend invites — signed-in users with friends only.
+            The link/code invite above keeps working for everyone else. */}
+        {user && invitableFriends.length > 0 && (
+          <div className="bg-white rounded-3xl shadow-paper p-5 border border-ink/5 mb-4">
+            <p className="text-ink/40 text-xs font-semibold uppercase tracking-wider font-body mb-3">
+              Invite a friend
+            </p>
+            <div className="space-y-2">
+              {invitableFriends.map(f => {
+                const av = AVATARS.find(a => a.id === f.avatarId) || AVATARS[0]
+                const col = AVATAR_COLORS.find(c => c.id === f.colorId) || AVATAR_COLORS[0]
+                const state = invitedUids[f.uid]
+                return (
+                  <div key={f.uid} className="flex items-center gap-2.5">
+                    <span
+                      className="w-8 h-8 rounded-[10px] flex items-center justify-center text-base flex-shrink-0"
+                      style={{ background: col.hex }}
+                    >
+                      {av.emoji}
+                    </span>
+                    <span className="font-body text-sm text-ink font-semibold truncate flex-1 min-w-0">{f.displayName || 'Friend'}</span>
+                    <button
+                      onClick={() => inviteFriendInApp(f)}
+                      disabled={state === 'sending' || state === 'sent'}
+                      className={`flex-shrink-0 font-body text-xs font-bold px-3 py-1.5 rounded-lg active:scale-95 transition-transform ${
+                        state === 'sent'
+                          ? 'bg-green-50 text-green-600'
+                          : state === 'failed'
+                            ? 'bg-red-50 text-red-500'
+                            : 'bg-blue-50 text-blue-600'
+                      }`}
+                    >
+                      {state === 'sent' ? '✓ Invited' : state === 'sending' ? '…' : state === 'failed' ? 'Retry' : '🎨 Invite'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* What to expect */}
+        <div className="bg-white rounded-3xl shadow-paper p-4 border border-ink/5 mb-4">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl flex-shrink-0">🎁</span>
+            <p className="text-ink/55 font-body text-[13px] leading-relaxed">
+              You'll each color a hidden part of the same page. When everyone is done, the full artwork is revealed.
+            </p>
+          </div>
+        </div>
+
+        {/* Players */}
+        <div className="bg-white rounded-3xl shadow-paper p-5 border border-ink/5 mb-4">
+          <p className="text-ink/40 text-xs font-semibold uppercase tracking-wider font-body mb-3">
+            Players ({players.length})
+          </p>
+          <div className="space-y-2">
+            {players.map(([pid, player]) => (
+              <motion.div
+                key={pid}
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-3 py-2 px-3 bg-cream rounded-xl"
+              >
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                  style={{ background: AVATAR_COLORS.find(c => c.id === player.colorId)?.hex || '#dbeafe', color: '#2563eb' }}
+                >
+                  {AVATARS.find(a => a.id === player.avatarId)?.emoji || player.name?.[0] || '?'}
+                </div>
+                <span className="font-semibold font-body text-ink text-sm">{player.name}</span>
+                {pid === session?.hostId && (
+                  <span className="ml-auto text-xs text-blue-500 font-semibold font-body bg-blue-50 px-2 py-0.5 rounded-lg">Host</span>
+                )}
+              </motion.div>
+            ))}
+            {players.length === 1 && (
+              <div className="flex items-center gap-3 py-2 px-3 border-2 border-dashed border-ink/12 rounded-xl">
+                <div className="w-8 h-8 rounded-full border-2 border-dashed border-ink/20 flex items-center justify-center text-sm text-ink/30">?</div>
+                <span className="text-ink/30 font-body text-sm">Waiting for player 2…</span>
+              </div>
+            )}
+            {players.length >= 2 && players.length < 4 && (
+              <div className="flex items-center gap-3 py-2 px-3 border-2 border-dashed border-ink/10 rounded-xl">
+                <div className="w-8 h-8 rounded-full border-2 border-dashed border-ink/15 flex items-center justify-center text-sm text-ink/25">+</div>
+                <span className="text-ink/25 font-body text-sm">Room for {4 - players.length} more — or start now</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {isHost && (
+          <button
+            onClick={handleStart}
+            disabled={!canStart}
+            className="w-full bg-blue-500 text-white font-bold py-4 rounded-2xl shadow-lifted active:scale-95 transition-all font-body text-lg disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {canStart ? 'Start Game 🎨' : 'Waiting for players…'}
+          </button>
+        )}
+        {!isHost && (
+          <p className="text-center text-ink/40 font-body text-sm mt-2">
+            Waiting for the host to start…
+          </p>
+        )}
+      </div>
+
+      <LeaveRoomModal
+        showConfirm={showLeaveConfirm}
+        onCancel={() => setShowLeaveConfirm(false)}
+        onConfirm={handleLeaveConfirm}
+        title="Leave this room?"
+        subtitle={isHost
+          ? 'The room will close and you’ll go back home.'
+          : 'You’ll leave this room and go back home.'}
+      />
+    </motion.div>
+  )
+}

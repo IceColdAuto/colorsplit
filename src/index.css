@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    @apply bg-cream text-ink;
+    font-family: 'Nunito', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    overscroll-behavior: none;
+  }
+  * {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  input, textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-blue-500 text-white font-bold py-4 px-8 rounded-2xl shadow-lifted
+           active:scale-95 transition-all duration-150 font-body text-lg;
+  }
+  .btn-secondary {
+    @apply bg-paper text-ink font-bold py-4 px-8 rounded-2xl shadow-paper
+           active:scale-95 transition-all duration-150 font-body text-lg border border-ink/10;
+  }
+  .btn-ghost {
+    @apply text-ink/60 font-semibold py-3 px-6 rounded-xl
+           active:scale-95 transition-all duration-150 font-body;
+  }
+  .card {
+    @apply bg-white rounded-3xl shadow-paper p-6 border border-ink/5;
+  }
+  .font-display {
+    font-family: 'Fredoka One', cursive;
+  }
+  .font-body {
+    font-family: 'Nunito', sans-serif;
+  }
+}
+
+.canvas-pencil { cursor: crosshair; }
+.canvas-eraser { cursor: cell; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }

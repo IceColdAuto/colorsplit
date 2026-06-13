@@ -1,0 +1,45 @@
+{
+  "rules": {
+    "sessions": {
+      "$code": {
+        ".read": true,
+        ".write": true
+      }
+    },
+
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+
+        "displayName": { ".read": "auth != null" },
+        "avatarId":    { ".read": "auth != null" },
+        "colorId":     { ".read": "auth != null" },
+        "friendCode":  { ".read": "auth != null" },
+
+        "friends": {
+          "$friendUid": {
+            ".write": "auth != null && $uid !== $friendUid && (auth.uid === $uid || auth.uid === $friendUid)"
+          }
+        }
+      }
+    },
+
+    "friendCodes": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && !data.exists() && newData.val() === auth.uid"
+      }
+    },
+
+    "invites": {
+      "$toUid": {
+        ".read": "auth != null && auth.uid === $toUid",
+        "$inviteId": {
+          ".write": "auth != null && ((!data.exists() && newData.child('fromUid').val() === auth.uid && newData.child('toUid').val() === $toUid) || (data.exists() && auth.uid === $toUid))",
+          ".validate": "!newData.exists() || (newData.hasChildren(['fromUid', 'toUid', 'sessionCode', 'status', 'createdAt', 'expiresAt']) && newData.child('status').val().matches(/^(pending|accepted|declined|expired)$/))"
+        }
+      }
+    }
+  }
+}
