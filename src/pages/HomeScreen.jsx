@@ -230,7 +230,7 @@ export default function HomeScreen() {
           <img
             src="/icons/colorsplit-logo-full.png"
             alt="ColorSplit"
-            className="w-[145px] sm:w-[162px] select-none mx-auto"
+            className="w-[164px] sm:w-[185px] select-none mx-auto"
             style={{ marginBottom: '-16px' }}
             draggable="false"
           />
@@ -300,26 +300,30 @@ export default function HomeScreen() {
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                className="w-full rounded-[22px] p-4 text-left border-2 border-amber-300 bg-amber-50 active:scale-[0.98] transition-transform"
-                style={{ boxShadow: '0 4px 18px rgba(255,160,30,0.18)' }}
+                className="w-full rounded-[22px] p-4 text-left bg-white active:scale-[0.98] transition-transform"
+                style={{
+                  border: '1px solid rgba(139,110,248,0.22)',
+                  boxShadow: '0 2px 14px rgba(139,110,248,0.10), 0 0 0 1px rgba(139,110,248,0.06)',
+                }}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-[44px] h-[44px] rounded-[14px] bg-amber-100 flex items-center justify-center flex-shrink-0">
-                    <span className="text-[22px] leading-none">🖍️</span>
+                  <div className="w-[44px] h-[44px] rounded-[14px] flex items-center justify-center flex-shrink-0" style={{ background: '#EDE8FF' }}>
+                    <svg width="24" height="22" viewBox="0 0 24 22" fill="none" aria-hidden="true">
+                      <rect x="6" y="1" width="12" height="15" rx="3.5" fill="#C4B5FD"/>
+                      <rect x="6" y="1" width="12" height="5" rx="3.5" fill="rgba(255,255,255,0.55)"/>
+                      <polygon points="6,16 12,22 18,16" fill="#EFC990"/>
+                      <polygon points="9,19 12,22 15,19" fill="#8C7B75"/>
+                    </svg>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-body font-bold text-ink text-[14px] leading-tight">
-                      {resumeRoom.solo ? 'Continue your artwork' : 'Jump back in!'}
+                      Continue coloring
                     </div>
                     <div className="text-ink/45 text-[12px] font-body">
-                      {resumeRoom.solo
-                        ? 'Your coloring is waiting for you'
-                        : resumeRoom.someoneLeft
-                          ? <>Your friend left — you can finish <span className="font-mono font-bold tracking-wider">{resumeRoom.code}</span> on your own</>
-                          : <>Room <span className="font-mono font-bold tracking-wider">{resumeRoom.code}</span> is still going</>}
+                      Resume your unfinished artwork
                     </div>
                   </div>
-                  <svg className="text-amber-500 flex-shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg className="flex-shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9B89F0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M9 18l6-6-6-6" />
                   </svg>
                 </div>
