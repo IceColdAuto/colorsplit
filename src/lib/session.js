@@ -158,7 +158,7 @@ export async function getSession(code) {
   return snap.exists() ? snap.val() : null
 }
 
-export async function createSession(hostId, hostName, solo = false, avatarId = null, colorId = null) {
+export async function createSession(hostId, hostName, solo = false, avatarId = null, colorId = null, uid = null) {
   const code = generateSessionCode()
   const data = {
     status: 'waiting',
@@ -169,7 +169,7 @@ export async function createSession(hostId, hostName, solo = false, avatarId = n
     settings: { mode: solo ? 'solo' : 'tear', visibility: solo ? 'live' : 'reveal', lineHelper: 'correction' },
     coloringPage: null,
     players: {
-      [hostId]: { name: hostName, avatarId, colorId, ready: false, done: false, progress: 0, assignedSection: null },
+      [hostId]: { name: hostName, avatarId, colorId, uid, ready: false, done: false, progress: 0, assignedSection: null },
     },
     tearLine: null,
   }
@@ -185,7 +185,7 @@ export async function createSession(hostId, hostName, solo = false, avatarId = n
 
 export const MAX_PLAYERS = 4
 
-export async function joinSession(code, playerId, playerName, avatarId = null, colorId = null) {
+export async function joinSession(code, playerId, playerName, avatarId = null, colorId = null, uid = null) {
   if (DEMO_MODE) {
     const session = memGet(`sessions/${code}`)
     if (!session) throw new Error('Session not found')
@@ -199,7 +199,7 @@ export async function joinSession(code, playerId, playerName, avatarId = null, c
     }
     if (!alreadyIn) {
       memSet(`sessions/${code}/players/${playerId}`, {
-        name: playerName, avatarId, colorId, ready: false, done: false, progress: 0, assignedSection: null,
+        name: playerName, avatarId, colorId, uid, ready: false, done: false, progress: 0, assignedSection: null,
       })
     }
     setActiveRoom(code, session.settings?.mode === 'solo')
@@ -218,7 +218,7 @@ export async function joinSession(code, playerId, playerName, avatarId = null, c
   }
   if (!alreadyIn) {
     await set(ref(db, `sessions/${code}/players/${playerId}`), {
-      name: playerName, avatarId, colorId, ready: false, done: false, progress: 0, assignedSection: null,
+      name: playerName, avatarId, colorId, uid, ready: false, done: false, progress: 0, assignedSection: null,
     })
   }
   setActiveRoom(code, session.settings?.mode === 'solo')

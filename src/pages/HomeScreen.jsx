@@ -49,7 +49,7 @@ export default function HomeScreen() {
       const playerId = getOrCreatePlayerId()
       const playerName = getOrCreatePlayerName()
       const p = getProfile()
-      await joinSession(inv.sessionCode, playerId, playerName, p?.avatarId ?? null, p?.colorId ?? null)
+      await joinSession(inv.sessionCode, playerId, playerName, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null)
       respondToInvite(user.uid, inv.id, 'accepted').catch(() => {})
       navigate(`/session/${inv.sessionCode}/lobby`)
     } catch (e) {
@@ -127,7 +127,7 @@ export default function HomeScreen() {
     const playerId = getOrCreatePlayerId()
     const playerName = getOrCreatePlayerName()
     const p = getProfile()
-    const code = await createSession(playerId, playerName, false, p?.avatarId ?? null, p?.colorId ?? null)
+    const code = await createSession(playerId, playerName, false, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null)
     navigate(`/session/${code}/lobby`)
   }
 
@@ -140,7 +140,7 @@ export default function HomeScreen() {
       const playerId = getOrCreatePlayerId()
       const playerName = getOrCreatePlayerName()
       const p = getProfile()
-      await joinSession(trimmed, playerId, playerName, p?.avatarId ?? null, p?.colorId ?? null)
+      await joinSession(trimmed, playerId, playerName, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null)
       navigate(`/session/${trimmed}/lobby`)
     } catch (e) {
       setJoinError(e.message || 'Session not found')
@@ -152,7 +152,7 @@ export default function HomeScreen() {
     const playerId = getOrCreatePlayerId()
     const playerName = getOrCreatePlayerName()
     const p = getProfile()
-    const code = await createSession(playerId, playerName, true, p?.avatarId ?? null, p?.colorId ?? null)
+    const code = await createSession(playerId, playerName, true, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null)
     navigate(`/session/${code}/pick`)
   }
 

@@ -75,7 +75,7 @@ export default function AccountSection() {
       const playerId = getOrCreatePlayerId()
       const playerName = getOrCreatePlayerName()
       const p = getProfile()
-      const code = await createSession(playerId, playerName, false, p?.avatarId ?? null, p?.colorId ?? null)
+      const code = await createSession(playerId, playerName, false, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null)
       await sendInvite({
         fromUid: user.uid,
         fromDisplayName: profile?.displayName || playerName,
