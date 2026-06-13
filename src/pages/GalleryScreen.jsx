@@ -17,7 +17,6 @@ function formatDate(ts) {
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// Honest contributor attribution.
 function contributorLabel(artwork) {
   const myId = artwork.savedByPlayerId || getOrCreatePlayerId()
   const others = (artwork.players || []).filter(p => p.id !== myId && p.name)
@@ -34,7 +33,7 @@ function ModeBadge({ mode }) {
   if (mode === 'solo') {
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold font-body"
-        style={{ background: '#FFF3D6', color: '#A07010' }}>
+        style={{ background: '#FFF3D6', color: '#9A6B00' }}>
         Solo
       </span>
     )
@@ -47,18 +46,6 @@ function ModeBadge({ mode }) {
   )
 }
 
-function ReplayBadge() {
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold font-body"
-      style={{ background: '#EEF4FF', color: '#3B6CF6' }}>
-      <svg width="7" height="8" viewBox="0 0 8 10" fill="currentColor" aria-hidden="true">
-        <path d="M1.5 1.5L7 5L1.5 8.5V1.5Z"/>
-      </svg>
-      Watch reveal
-    </span>
-  )
-}
-
 export default function GalleryScreen() {
   const navigate = useNavigate()
   const [artworks, setArtworks] = useState([])
@@ -67,7 +54,7 @@ export default function GalleryScreen() {
   const [replayKey, setReplayKey] = useState(0)
   const [shareMsg, setShareMsg] = useState('')
   const [deleteTarget, setDeleteTarget] = useState(null)
-  const { user, profile, authAvailable } = useAuth()
+  const { user, authAvailable } = useAuth()
   const [cloudArtworks, setCloudArtworks] = useState([])
   const [showAuth, setShowAuth] = useState(false)
   const currentGuestId = useMemo(() => getOrCreatePlayerId(), [])
@@ -76,8 +63,6 @@ export default function GalleryScreen() {
     setArtworks(loadGallery())
   }, [])
 
-  // Account gallery: on sign-in, auto-migrate eligible guest artworks silently,
-  // then load (or reload) the cloud gallery.
   useEffect(() => {
     if (!user) { setCloudArtworks([]); return }
     let cancelled = false
@@ -91,7 +76,6 @@ export default function GalleryScreen() {
     return () => { cancelled = true }
   }, [user])
 
-  // Ownership filter
   const visibleLocal = useMemo(() => {
     if (!user) {
       return artworks.filter(
@@ -200,10 +184,10 @@ export default function GalleryScreen() {
   } : null
 
   const artworkCount = combined.length === 0
-    ? '0 artworks'
+    ? null
     : combined.length === 1
     ? '1 artwork'
-    : `${combined.length} artworks saved`
+    : `${combined.length} artworks`
 
   return (
     <motion.div
@@ -212,33 +196,33 @@ export default function GalleryScreen() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.35 }}
     >
-      {/* ── Background ambiance ────────────────────────────────────────── */}
+      {/* ── Background ambiance ─────────────────────────────────────────── */}
       <div className="absolute inset-0 pointer-events-none select-none" aria-hidden="true">
-        <div className="absolute -top-20 -left-20 w-[340px] h-[340px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(162,110,255,0.16) 0%, rgba(124,62,250,0.06) 45%, transparent 70%)' }} />
-        <div className="absolute -top-32 -right-24 w-[400px] h-[400px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(255,189,80,0.18) 0%, rgba(255,155,46,0.07) 44%, transparent 70%)' }} />
-        <div className="absolute -bottom-16 -right-16 w-[280px] h-[280px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(236,110,170,0.13) 0%, transparent 68%)' }} />
-        <div className="absolute -bottom-24 -left-20 w-[360px] h-[360px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(74,158,255,0.15) 0%, rgba(37,99,235,0.05) 45%, transparent 70%)' }} />
-        <svg className="absolute top-8 right-8 opacity-[0.09]" width="68" height="68" viewBox="0 0 68 68" fill="none">
-          <circle cx="11" cy="11" r="9" fill="#FF9B2E" />
-          <circle cx="50" cy="20" r="6" fill="#7C6EFA" />
-          <circle cx="20" cy="54" r="7" fill="#4A9EFF" />
-          <circle cx="57" cy="55" r="4.5" fill="#EC6EAA" />
+        <div className="absolute -top-20 -left-20 w-[380px] h-[380px] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(162,110,255,0.17) 0%, rgba(124,62,250,0.06) 45%, transparent 70%)' }} />
+        <div className="absolute -top-28 -right-20 w-[420px] h-[420px] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(255,189,80,0.19) 0%, rgba(255,155,46,0.07) 44%, transparent 70%)' }} />
+        <div className="absolute -bottom-14 -right-14 w-[300px] h-[300px] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(236,110,170,0.14) 0%, transparent 68%)' }} />
+        <div className="absolute -bottom-20 -left-16 w-[340px] h-[340px] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(74,158,255,0.14) 0%, rgba(37,99,235,0.05) 45%, transparent 70%)' }} />
+        <svg className="absolute top-10 right-10 opacity-[0.09]" width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <circle cx="10" cy="10" r="8" fill="#FF9B2E" />
+          <circle cx="47" cy="18" r="5.5" fill="#7C6EFA" />
+          <circle cx="18" cy="51" r="6.5" fill="#4A9EFF" />
+          <circle cx="54" cy="52" r="4" fill="#EC6EAA" />
         </svg>
-        <svg className="absolute bottom-24 left-4 opacity-[0.08]" width="56" height="56" viewBox="0 0 56 56" fill="none">
-          <circle cx="9" cy="9" r="8" fill="#FFD07A" />
-          <circle cx="40" cy="16" r="5.5" fill="#7C6EFA" />
-          <circle cx="16" cy="44" r="6.5" fill="#4A9EFF" />
+        <svg className="absolute bottom-28 left-5 opacity-[0.07]" width="52" height="52" viewBox="0 0 52 52" fill="none">
+          <circle cx="8" cy="8" r="7" fill="#FFD07A" />
+          <circle cx="38" cy="14" r="5" fill="#7C6EFA" />
+          <circle cx="14" cy="42" r="6" fill="#4A9EFF" />
         </svg>
       </div>
 
-      {/* ── Main content ──────────────────────────────────────────────── */}
-      <div className="relative z-10 max-w-4xl mx-auto px-5 sm:px-8">
+      {/* ── Main content ────────────────────────────────────────────────── */}
+      <div className="relative z-10 max-w-5xl mx-auto px-5 sm:px-8">
 
-        {/* Header */}
+        {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="pt-10 pb-5 border-b border-ink/6">
           <div className="flex items-center gap-3">
             <button
@@ -246,28 +230,47 @@ export default function GalleryScreen() {
               className="w-9 h-9 rounded-full bg-white/80 border border-ink/8 flex items-center justify-center text-ink/50 active:scale-90 transition-transform shadow-sm flex-shrink-0"
               aria-label="Back"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M15 18l-6-6 6-6" />
               </svg>
             </button>
-            <div className="flex-1 min-w-0">
-              <h1
-                className="text-[22px] leading-tight text-ink"
-                style={{ fontFamily: "'Fredoka One', cursive" }}
-              >
-                Magic Gallery
-              </h1>
-              <p className="text-ink/42 font-body text-[12px] leading-snug">
-                Your finished artworks and reveal replays.
-              </p>
+
+            {/* Gallery mark + title */}
+            <div className="flex items-center gap-2.5 flex-1 min-w-0">
+              {/* Tiny framed gallery mark */}
+              <div className="flex-shrink-0 w-8 h-8 rounded-[10px] flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #EDE0FF 0%, #D8CCFF 100%)', boxShadow: '0 2px 8px rgba(139,110,248,0.22)' }}>
+                <svg width="20" height="20" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+                  <rect x="0.5" y="0.5" width="21" height="21" rx="5.5" fill="#EDE0FF" stroke="#C4ABFF" strokeWidth="1.2"/>
+                  <rect x="3" y="3" width="16" height="16" rx="3.5" fill="#FFFDF8"/>
+                  <path d="M5 16.5 Q11 6.5 17 16.5" stroke="#8B6EF8" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
+                  <path d="M6.5 16.5 Q11 9.5 15.5 16.5" stroke="#4A9EFF" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+                  <path d="M8 16.5 Q11 12 14 16.5" stroke="#EC6EAA" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+                  <circle cx="4.5" cy="4.5" r="1" fill="#FFD07A" opacity="0.9"/>
+                  <path d="M17.5 3 L18 4.2 L19.2 3 L18 1.8 Z" fill="#FFB347"/>
+                </svg>
+              </div>
+
+              <div>
+                <h1 className="text-[21px] leading-tight text-ink"
+                  style={{ fontFamily: "'Fredoka One', cursive" }}>
+                  Magic Gallery
+                </h1>
+                <p className="text-ink/40 font-body text-[11px] leading-none mt-0.5">
+                  Your finished artworks and reveal replays.
+                </p>
+              </div>
             </div>
-            <span className="text-ink/30 font-body text-[12px] font-medium flex-shrink-0">
-              {artworkCount}
-            </span>
+
+            {artworkCount && (
+              <span className="text-ink/28 font-body text-[12px] font-medium flex-shrink-0">
+                {artworkCount}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Sign-in nudge for guests with artworks */}
+        {/* Sign-in nudge */}
         {authAvailable && combined.length > 0 && !user && (
           <div className="pt-4">
             <button
@@ -281,55 +284,61 @@ export default function GalleryScreen() {
           </div>
         )}
 
-        {/* Empty state */}
+        {/* ── Empty state ─────────────────────────────────────────────────── */}
         {combined.length === 0 && (
           <div className="flex flex-col items-center justify-center min-h-[65vh] px-8 text-center">
-            <div className="relative mb-6">
+            {/* Framed gallery icon — large empty state version */}
+            <div className="relative mb-7">
               <div
-                className="w-28 h-28 rounded-[32px] flex items-center justify-center mx-auto"
+                className="w-[120px] h-[120px] rounded-[36px] flex items-center justify-center mx-auto"
                 style={{
-                  background: 'linear-gradient(135deg, #F3D0FF 0%, #EDE8FF 50%, #D6EAFF 100%)',
-                  boxShadow: '0 8px 32px rgba(139,110,248,0.20)',
+                  background: 'linear-gradient(145deg, #F0E8FF 0%, #E8DEFF 40%, #DCEEFF 100%)',
+                  boxShadow: '0 6px 36px rgba(139,110,248,0.22), 0 2px 10px rgba(139,110,248,0.10)',
                 }}
               >
-                <svg width="68" height="68" viewBox="0 0 68 68" fill="none" aria-hidden="true">
-                  {/* Frame */}
-                  <rect x="4" y="8" width="60" height="48" rx="9" fill="#E8DEFF" stroke="#C4B5FD" strokeWidth="2"/>
-                  {/* Canvas */}
-                  <rect x="10" y="14" width="48" height="36" rx="6" fill="white"/>
-                  {/* Rainbow arcs */}
-                  <path d="M15 41 Q34 20 53 41" stroke="#8B6EF8" strokeWidth="3.2" fill="none" strokeLinecap="round"/>
-                  <path d="M19 41 Q34 24 49 41" stroke="#4A9EFF" strokeWidth="2.6" fill="none" strokeLinecap="round"/>
-                  <path d="M23 41 Q34 28 45 41" stroke="#EC6EAA" strokeWidth="2.2" fill="none" strokeLinecap="round"/>
-                  {/* Sparkle - top right */}
-                  <path d="M56 9 L57.4 12.5 L61 9 L57.4 5.5 Z" fill="#FFB347"/>
-                  {/* Dot accent - top left */}
-                  <circle cx="9" cy="10" r="2.5" fill="#FFD07A" opacity="0.7"/>
-                  {/* Star - inner top right */}
-                  <circle cx="58" cy="22" r="1.8" fill="#8B6EF8" opacity="0.4"/>
+                <svg width="72" height="72" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+                  {/* Outer frame — premium double-border feel */}
+                  <rect x="2" y="5" width="68" height="58" rx="10" fill="#E8DCFF" stroke="#C4ABFF" strokeWidth="2"/>
+                  <rect x="4.5" y="7.5" width="63" height="53" rx="8" fill="none" stroke="rgba(196,171,255,0.4)" strokeWidth="1"/>
+                  {/* Inner mat (warm cream-white canvas) */}
+                  <rect x="9" y="12" width="54" height="43" rx="6" fill="#FFFEF9"/>
+                  {/* Art scene — three ColorSplit arcs */}
+                  <path d="M14 48 Q36 22 58 48" stroke="#8B6EF8" strokeWidth="3.4" fill="none" strokeLinecap="round"/>
+                  <path d="M18 48 Q36 27 54 48" stroke="#4A9EFF" strokeWidth="2.8" fill="none" strokeLinecap="round"/>
+                  <path d="M22 48 Q36 31 50 48" stroke="#EC6EAA" strokeWidth="2.4" fill="none" strokeLinecap="round"/>
+                  {/* Small sun/dot in top-left of canvas */}
+                  <circle cx="16" cy="20" r="3.5" fill="#FFD07A" opacity="0.75"/>
+                  <circle cx="16" cy="20" r="1.8" fill="#FFBC00" opacity="0.9"/>
+                  {/* Sparkle top-right on frame */}
+                  <path d="M61 7 L62.2 10.2 L65 7 L62.2 3.8 Z" fill="#FFB347"/>
+                  {/* Tiny star bottom-left frame corner */}
+                  <path d="M8 56 L8.8 58 L10.6 56 L8.8 54 Z" fill="#FFB347" opacity="0.6"/>
                 </svg>
               </div>
-              {/* Floating dot accents */}
+              {/* Floating color dots */}
               <div className="absolute -top-2 -right-1 w-4 h-4 rounded-full"
-                style={{ background: 'linear-gradient(135deg,#FFB347,#FF9B2E)', opacity: 0.75 }} />
-              <div className="absolute -bottom-1 -left-2 w-3 h-3 rounded-full"
-                style={{ background: 'linear-gradient(135deg,#8B6EF8,#4A9EFF)', opacity: 0.55 }} />
+                style={{ background: 'linear-gradient(135deg, #FFB347, #FF9B2E)', opacity: 0.80 }} />
+              <div className="absolute top-3 -right-4 w-2.5 h-2.5 rounded-full"
+                style={{ background: '#8B6EF8', opacity: 0.40 }} />
+              <div className="absolute -bottom-1 -left-2 w-3.5 h-3.5 rounded-full"
+                style={{ background: 'linear-gradient(135deg, #8B6EF8, #4A9EFF)', opacity: 0.50 }} />
             </div>
+
             <h2
-              className="text-2xl text-ink mb-2"
+              className="text-[26px] text-ink mb-2"
               style={{ fontFamily: "'Fredoka One', cursive" }}
             >
               No magic yet
             </h2>
-            <p className="text-ink/50 font-body text-sm mb-8 leading-relaxed max-w-[240px]">
+            <p className="text-ink/48 font-body text-sm mb-8 leading-relaxed max-w-[230px]">
               Finish your first coloring page to unlock your gallery.
             </p>
             <button
               onClick={() => navigate('/')}
-              className="text-white font-bold px-8 py-3.5 rounded-2xl font-body active:scale-95 transition-transform"
+              className="text-white font-bold px-9 py-3.5 rounded-[18px] font-body active:scale-95 transition-transform"
               style={{
                 background: 'linear-gradient(135deg, #8B6EF8 0%, #3B6CF6 100%)',
-                boxShadow: '0 8px 28px rgba(90,70,240,0.30)',
+                boxShadow: '0 8px 28px rgba(90,70,240,0.30), 0 2px 8px rgba(90,70,240,0.18)',
               }}
             >
               Start coloring
@@ -337,83 +346,100 @@ export default function GalleryScreen() {
           </div>
         )}
 
-        {/* Artwork grid */}
+        {/* ── Artwork grid ─────────────────────────────────────────────────── */}
         {combined.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 pt-5 pb-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-6 pb-14">
             {combined.map((artwork, i) => {
               const hasCardReplay = artwork.strokes?.length > 0 || (artwork.mode === 'tear' && artwork.allStrokes)
               return (
                 <motion.div
                   key={artwork.id}
-                  initial={{ opacity: 0, y: 16 }}
+                  initial={{ opacity: 0, y: 18 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
+                  transition={{ delay: i * 0.06, type: 'spring', stiffness: 280, damping: 26 }}
                   className="relative"
                 >
+                  {/* ── Card — entire area opens the artwork ─────────────── */}
                   <button
                     onClick={() => openArtwork(artwork)}
                     className="w-full text-left active:scale-[0.97] transition-transform"
                   >
                     <div
-                      className="bg-white rounded-3xl overflow-hidden"
+                      className="rounded-[22px] overflow-hidden"
                       style={{
-                        border: '1px solid rgba(139,110,248,0.14)',
-                        boxShadow: '0 4px 20px rgba(45,36,22,0.09), 0 0 0 1px rgba(139,110,248,0.06)',
+                        background: '#FFFEFA',
+                        border: '1.5px solid rgba(200,175,130,0.16)',
+                        boxShadow: '0 2px 12px rgba(45,36,22,0.08), 0 8px 28px rgba(45,36,22,0.05), 0 0 0 1px rgba(200,175,130,0.08)',
                       }}
                     >
-                      {/* Gradient frame accent bar */}
-                      <div className="h-[3px] w-full"
-                        style={{ background: 'linear-gradient(90deg, #8B6EF8 0%, #4A9EFF 50%, #EC6EAA 100%)' }} />
-                      {/* Artwork preview */}
-                      <div
-                        className="aspect-square mx-3 mt-3 rounded-2xl overflow-hidden"
-                        style={{ background: 'linear-gradient(135deg, #F8F3FF 0%, #EEF4FF 100%)' }}
-                      >
-                        {artwork.finalImageUrl ? (
-                          <img
-                            src={artwork.finalImageUrl}
-                            alt={artwork.name || 'Artwork'}
-                            className="w-full h-full object-contain"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <svg width="52" height="52" viewBox="0 0 52 52" fill="none" opacity="0.28" aria-hidden="true">
-                              <rect x="2" y="6" width="48" height="40" rx="7" fill="#8B6EF8"/>
-                              <rect x="7" y="11" width="38" height="28" rx="5" fill="white"/>
-                              <path d="M11 33 Q26 15 41 33" stroke="#8B6EF8" strokeWidth="2.8" fill="none" strokeLinecap="round"/>
-                              <path d="M15 33 Q26 19 37 33" stroke="#EC6EAA" strokeWidth="2.2" fill="none" strokeLinecap="round"/>
-                            </svg>
-                          </div>
-                        )}
+                      {/* ── Framed artwork preview ── */}
+                      {/* The outer card's cream bg shows through as the "mat board" */}
+                      <div className="px-3.5 pt-3.5">
+                        <div
+                          className="aspect-square rounded-[14px] overflow-hidden"
+                          style={{
+                            background: 'linear-gradient(145deg, #F9F5FF 0%, #F0F6FF 100%)',
+                            boxShadow: 'inset 0 0 0 1px rgba(170,140,90,0.12), inset 0 2px 8px rgba(45,36,22,0.06)',
+                          }}
+                        >
+                          {artwork.finalImageUrl ? (
+                            <img
+                              src={artwork.finalImageUrl}
+                              alt={artwork.name || 'Artwork'}
+                              className="w-full h-full object-contain"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <svg width="54" height="54" viewBox="0 0 60 60" fill="none" opacity="0.22" aria-hidden="true">
+                                <rect x="2" y="5" width="56" height="46" rx="8" fill="#8B6EF8"/>
+                                <rect x="7" y="10" width="46" height="35" rx="5.5" fill="#FFFEF9"/>
+                                <path d="M12 38 Q30 16 48 38" stroke="#8B6EF8" strokeWidth="3" fill="none" strokeLinecap="round"/>
+                                <path d="M16 38 Q30 20 44 38" stroke="#4A9EFF" strokeWidth="2.4" fill="none" strokeLinecap="round"/>
+                                <path d="M20 38 Q30 24 40 38" stroke="#EC6EAA" strokeWidth="2" fill="none" strokeLinecap="round"/>
+                              </svg>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      {/* Card info */}
-                      <div className="px-3 pt-2.5 pb-3">
-                        <div className="font-semibold font-body text-ink text-sm truncate mb-1">
+
+                      {/* ── Card footer ── */}
+                      {/* pr-9 leaves space for the delete button positioned below */}
+                      <div className="px-3.5 pt-2.5 pb-[46px] pr-4">
+                        <div className="font-bold font-body text-ink text-[13px] truncate mb-0.5">
                           {artwork.name || 'My Artwork'}
                         </div>
-                        <div className="flex items-center justify-between gap-1 mb-2">
-                          <div className="text-ink/45 text-[11px] font-body truncate flex-1">
-                            {contributorLabel(artwork)}
-                          </div>
-                          <div className="text-ink/30 text-[10px] font-body flex-shrink-0">
-                            {formatDate(artwork.completedAt)}
-                          </div>
+                        <div className="text-ink/42 text-[10px] font-body truncate mb-2">
+                          {contributorLabel(artwork)} · {formatDate(artwork.completedAt)}
                         </div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <ModeBadge mode={artwork.mode} />
-                          {hasCardReplay && <ReplayBadge />}
+                          {hasCardReplay && (
+                            <div
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold text-white leading-none"
+                              style={{
+                                background: 'linear-gradient(135deg, #8B6EF8 0%, #4A9EFF 100%)',
+                                boxShadow: '0 2px 8px rgba(90,70,240,0.25)',
+                              }}
+                            >
+                              <svg width="7" height="8" viewBox="0 0 8 10" fill="currentColor" aria-hidden="true">
+                                <path d="M1.5 1.5L7 5L1.5 8.5V1.5Z"/>
+                              </svg>
+                              Watch reveal
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
                   </button>
-                  {/* Delete button */}
+
+                  {/* ── Delete — in footer zone, not over the artwork ────── */}
                   <button
                     onClick={(e) => requestDelete(artwork, e)}
-                    className="absolute top-[18px] right-[18px] w-7 h-7 bg-white/90 rounded-full flex items-center justify-center text-ink/30 active:scale-90 transition-transform shadow-sm border border-ink/8"
-                    title="Delete"
+                    className="absolute bottom-[13px] right-[14px] w-8 h-8 rounded-full flex items-center justify-center text-ink/18 active:text-ink/50 active:bg-ink/6 transition-colors"
+                    title="Delete artwork"
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <polyline points="3 6 5 6 21 6"/>
                       <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
                     </svg>
@@ -425,7 +451,7 @@ export default function GalleryScreen() {
         )}
       </div>
 
-      {/* ── Detail overlay (logic unchanged) ─────────────────────────── */}
+      {/* ── Detail overlay ──────────────────────────────────────────────── */}
       <AnimatePresence>
         {selected && (
           <motion.div
@@ -446,7 +472,7 @@ export default function GalleryScreen() {
               </div>
               <button
                 onClick={(e) => requestDelete(selected, e)}
-                className="text-white/30 active:scale-90 transition-transform p-1"
+                className="text-white/28 active:text-white/60 transition-colors p-1"
                 title="Delete"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -488,9 +514,9 @@ export default function GalleryScreen() {
                       <img src={selected.finalImageUrl} alt="Artwork" className="rounded-3xl shadow-deep" style={{ width: displayWidth, height: displayWidth, objectFit: 'contain' }} />
                     ) : (
                       <div className="rounded-3xl bg-gray-800 flex items-center justify-center" style={{ width: displayWidth, height: displayWidth }}>
-                        <svg width="64" height="64" viewBox="0 0 68 68" fill="none" opacity="0.3" aria-hidden="true">
-                          <rect x="4" y="8" width="60" height="48" rx="9" fill="#8B6EF8"/>
-                          <rect x="10" y="14" width="48" height="36" rx="6" fill="white"/>
+                        <svg width="60" height="60" viewBox="0 0 72 72" fill="none" opacity="0.25" aria-hidden="true">
+                          <rect x="2" y="5" width="68" height="58" rx="10" fill="#8B6EF8"/>
+                          <rect x="9" y="12" width="54" height="43" rx="6" fill="white"/>
                         </svg>
                       </div>
                     )}
@@ -507,7 +533,7 @@ export default function GalleryScreen() {
 
             <div className="px-6 pb-10 flex-shrink-0">
               {phase === 'timelapse' && (
-                <button onClick={() => setPhase('reveal')} className="w-full text-white/40 font-body text-sm py-3 active:scale-95 transition-transform">
+                <button onClick={() => setPhase('reveal')} className="w-full text-white/38 font-body text-sm py-3 active:scale-95 transition-transform">
                   Skip to final →
                 </button>
               )}
@@ -523,8 +549,8 @@ export default function GalleryScreen() {
                   )}
                   <button
                     onClick={handleSave}
-                    className="flex-1 text-white font-bold py-3.5 rounded-2xl shadow-lifted active:scale-95 transition-transform font-body"
-                    style={{ background: 'linear-gradient(135deg, #8B6EF8 0%, #3B6CF6 100%)' }}
+                    className="flex-1 text-white font-bold py-3.5 rounded-2xl active:scale-95 transition-transform font-body"
+                    style={{ background: 'linear-gradient(135deg, #8B6EF8 0%, #3B6CF6 100%)', boxShadow: '0 4px 18px rgba(90,70,240,0.32)' }}
                   >
                     💾 Save PNG
                   </button>
@@ -538,7 +564,7 @@ export default function GalleryScreen() {
         )}
       </AnimatePresence>
 
-      {/* ── Delete confirmation dialog ─────────────────────────────────── */}
+      {/* ── Delete confirmation ─────────────────────────────────────────── */}
       <AnimatePresence>
         {deleteTarget && (
           <motion.div
@@ -554,25 +580,25 @@ export default function GalleryScreen() {
               exit={{ scale: 0.88, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 400, damping: 28 }}
               onClick={e => e.stopPropagation()}
-              className="bg-cream rounded-3xl p-6 w-full max-w-sm shadow-deep"
+              className="bg-cream rounded-3xl p-6 w-full max-w-sm"
+              style={{ boxShadow: '0 24px 64px rgba(45,36,22,0.28)' }}
             >
               <div className="flex items-center justify-center mb-3">
                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
-                  style={{ background: 'linear-gradient(135deg,#FEE2E2,#FECACA)' }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  style={{ background: 'linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%)' }}>
+                  <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                     <polyline points="3 6 5 6 21 6"/>
                     <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
                   </svg>
                 </div>
               </div>
-              <h3
-                className="text-xl text-ink text-center mb-2"
-                style={{ fontFamily: "'Fredoka One', cursive" }}
-              >
+              <h3 className="text-xl text-ink text-center mb-2"
+                style={{ fontFamily: "'Fredoka One', cursive" }}>
                 Delete artwork?
               </h3>
               <p className="text-ink/50 font-body text-sm text-center mb-6 leading-relaxed">
-                Are you sure you want to delete <strong className="text-ink/70">"{deleteTarget.name || 'this artwork'}"</strong>?
+                Are you sure you want to delete{' '}
+                <strong className="text-ink/70">"{deleteTarget.name || 'this artwork'}"</strong>?
                 This cannot be undone.
               </p>
               <div className="flex gap-3">
@@ -594,7 +620,7 @@ export default function GalleryScreen() {
         )}
       </AnimatePresence>
 
-      {/* ── Sign-in sheet ─────────────────────────────────────────────── */}
+      {/* ── Sign-in sheet ────────────────────────────────────────────────── */}
       <AnimatePresence>
         {showAuth && (
           <AuthModal

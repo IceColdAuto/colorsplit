@@ -489,21 +489,23 @@ export default function HomeScreen() {
               <div
                 className="w-[44px] h-[44px] rounded-[14px] flex items-center justify-center mb-3 overflow-hidden"
                 style={{
-                  background: 'linear-gradient(135deg, #FFF0F7 0%, #FFD6EC 100%)',
-                  boxShadow: '0 2px 8px rgba(236,110,170,0.20)',
+                  background: 'linear-gradient(135deg, #EDE0FF 0%, #D5C8FF 100%)',
+                  boxShadow: '0 2px 8px rgba(139,110,248,0.26)',
                 }}
               >
                 <svg width="26" height="26" viewBox="0 0 28 28" fill="none" aria-hidden="true">
-                  {/* Picture frame */}
-                  <rect x="0.5" y="0.5" width="27" height="27" rx="6.5" fill="#F3D0FF" stroke="#E0A8FF" strokeWidth="1"/>
-                  {/* Art canvas */}
-                  <rect x="3" y="3" width="22" height="22" rx="4.5" fill="#FFF7FF"/>
-                  {/* Rainbow arcs — purple, blue, pink */}
-                  <path d="M5.5 20 Q14 7 22.5 20" stroke="#8B6EF8" strokeWidth="2.4" fill="none" strokeLinecap="round"/>
-                  <path d="M7.5 20 Q14 10 20.5 20" stroke="#4A9EFF" strokeWidth="2.4" fill="none" strokeLinecap="round"/>
-                  <path d="M9.5 20 Q14 13 18.5 20" stroke="#EC6EAA" strokeWidth="2" fill="none" strokeLinecap="round"/>
-                  {/* Sparkle diamond — top right of frame */}
-                  <path d="M21 5.5 L21.7 7.2 L23.5 5.5 L21.7 3.8 Z" fill="#FFB347"/>
+                  {/* Premium frame — thicker border, warm fill */}
+                  <rect x="0.5" y="0.5" width="27" height="27" rx="7" fill="#E8DCFF" stroke="#C4ABFF" strokeWidth="1.5"/>
+                  {/* Inner mat (warm cream canvas) */}
+                  <rect x="3.5" y="3.5" width="21" height="21" rx="4.5" fill="#FFFDF8"/>
+                  {/* Art: three layered ColorSplit arcs */}
+                  <path d="M6.5 21 Q14 8.5 21.5 21" stroke="#8B6EF8" strokeWidth="2.2" fill="none" strokeLinecap="round"/>
+                  <path d="M8.5 21 Q14 12 19.5 21" stroke="#4A9EFF" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
+                  <path d="M10.5 21 Q14 15 17.5 21" stroke="#EC6EAA" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                  {/* Warm sun dot — top-left of canvas */}
+                  <circle cx="6" cy="6.5" r="1.4" fill="#FFD07A" opacity="0.90"/>
+                  {/* 4-pt sparkle — top-right on frame */}
+                  <path d="M22.5 3 L23.3 5.2 L25 3 L23.3 0.8 Z" fill="#FFB347"/>
                 </svg>
               </div>
               <div className="font-body font-bold text-ink text-[14px] leading-tight mb-0.5">Gallery</div>
