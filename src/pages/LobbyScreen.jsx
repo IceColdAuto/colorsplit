@@ -76,6 +76,7 @@ export default function LobbyScreen() {
   const [invitedUids, setInvitedUids] = useState({}) // uid → 'sending' | 'sent' | 'failed'
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
   const leavingRef = useRef(false)
+  const prevPlayerUids = useRef(new Set())
 
   useEffect(() => {
     if (!user) { setFriends([]); return }
@@ -97,6 +98,21 @@ export default function LobbyScreen() {
       (!profile?.friendCode || f.friendCode !== profile.friendCode) &&
       !playerUids.has(f.uid),
   )
+
+  // Reset 'sent' state only for friends who were in the lobby and have now left.
+  // Using session as the dep because playerUids is recomputed from it each render
+  // and is not referentially stable.
+  useEffect(() => {
+    const prev = prevPlayerUids.current
+    const justLeft = [...prev].filter(uid => !playerUids.has(uid))
+    prevPlayerUids.current = new Set(playerUids)
+    if (!justLeft.length) return
+    setInvitedUids(s => {
+      const next = { ...s }
+      justLeft.forEach(uid => delete next[uid])
+      return next
+    })
+  }, [session]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isHost = session?.hostId === playerId
 
@@ -120,6 +136,15 @@ export default function LobbyScreen() {
         sessionCode: code,
       })
       setInvitedUids(s => ({ ...s, [friend.uid]: 'sent' }))
+      const uid = friend.uid
+      setTimeout(() => {
+        setInvitedUids(s => {
+          if (s[uid] !== 'sent') return s
+          const next = { ...s }
+          delete next[uid]
+          return next
+        })
+      }, 30_000)
     } catch {
       setInvitedUids(s => ({ ...s, [friend.uid]: 'failed' }))
     }
