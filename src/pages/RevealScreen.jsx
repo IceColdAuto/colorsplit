@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getPageById } from '../lib/coloringPages'
-import { subscribeToSession, getOrCreatePlayerId, getAllStrokes, resetRound, setPlayerWantsAgain, leaveRoom } from '../lib/session'
-import { buildAllowedMask, buildRevealMask, smoothPoints, drawStroke } from '../lib/canvasUtils'
-import { saveArtwork, compressImageDataUrl, markArtworkMigrated } from '../lib/gallery'
+import { subscribeToSession, getOrCreatePlayerId, getOrCreatePlayerName, getAllStrokes, resetRound, setPlayerWantsAgain, leaveRoom, createSession } from '../lib/session'
+import { getProfile } from '../lib/profile'
+import { buildAllowedMask, buildRevealMask, buildPolygonMask, buildRevealPolygonMask, smoothPoints, drawStroke } from '../lib/canvasUtils'
+import { saveArtwork, compressImageDataUrl, markArtworkMigrated, loadGallery } from '../lib/gallery'
 import { saveArtworkToCloud } from '../lib/cloudGallery'
 import useAuth from '../hooks/useAuth'
 import AuthModal from '../components/AuthModal'
@@ -12,6 +13,19 @@ import { generateRevealVideo, shareOrDownloadVideo, shareOrDownloadImage, isReve
 import { copyText } from '../lib/share'
 import TimeLapsePlayer from '../components/TimeLapsePlayer'
 import MaskedTearReplay from '../components/MaskedTearReplay'
+
+const CONFETTI_DOTS = [
+  { size: 10, color: '#8B6EF8', pos: { top: -10, left: '18%' },    delay: 0.18, dur: 3.1 },
+  { size:  7, color: '#FF6B8A', pos: { top:  -8, left: '55%' },    delay: 0.28, dur: 2.8 },
+  { size:  9, color: '#FFD166', pos: { top: -12, left: '80%' },    delay: 0.22, dur: 3.4 },
+  { size:  8, color: '#74C7EC', pos: { bottom:  -9, left: '25%' }, delay: 0.35, dur: 2.9 },
+  { size: 10, color: '#8B6EF8', pos: { bottom: -11, left: '65%' }, delay: 0.20, dur: 3.2 },
+  { size:  7, color: '#FF6B8A', pos: { top: '22%', left:  -8 },    delay: 0.30, dur: 3.0 },
+  { size:  9, color: '#FFD166', pos: { top: '58%', left: -10 },    delay: 0.15, dur: 3.5 },
+  { size:  8, color: '#74C7EC', pos: { top: '15%', right: -9 },    delay: 0.25, dur: 2.7 },
+  { size: 11, color: '#8B6EF8', pos: { top: '70%', right: -11 },   delay: 0.32, dur: 3.3 },
+  { size:  7, color: '#FF6B8A', pos: { bottom: -8, right: '20%' }, delay: 0.38, dur: 2.6 },
+]
 
 const CANVAS_SIZE = 800
 
@@ -36,7 +50,7 @@ function flattenStrokes(allStrokes) {
 async function renderTearReveal(allStrokes, sessionData, colorPage) {
   const tearPoints = sessionData?.tearLine?.points
   const orientation = sessionData?.tearLine?.orientation ?? 'horizontal'
-  if (!tearPoints?.length) return null
+  if (!tearPoints?.length && !sessionData?.zones) return null
 
   // Final canvas — white background
   const final = document.createElement('canvas')
@@ -66,7 +80,9 @@ async function renderTearReveal(allStrokes, sessionData, colorPage) {
       drawStroke(pieceCtx, stroke)
     }
 
-    const mask = buildRevealMask(tearPoints, section, orientation)
+    const mask = sessionData?.zones?.[section]?.polygon
+      ? buildRevealPolygonMask(sessionData.zones[section].polygon)
+      : buildRevealMask(tearPoints, section, orientation)
     pieceCtx.save()
     pieceCtx.globalCompositeOperation = 'destination-in'
     pieceCtx.drawImage(mask, 0, 0)
@@ -123,8 +139,6 @@ export default function RevealScreen() {
   const [sessionData, setSessionData] = useState(null)
   const [shareMsg, setShareMsg] = useState('')
   const [gallerySaved, setGallerySaved] = useState(false)
-  const [artworkName, setArtworkName] = useState('')
-  const [showNameModal, setShowNameModal] = useState(false)
   const [replayKey, setReplayKey] = useState(0)
   const [tearReplayKey, setTearReplayKey] = useState(0)
   const [allStrokesData, setAllStrokesData] = useState(null)
@@ -135,6 +149,9 @@ export default function RevealScreen() {
   const [videoProgress, setVideoProgress] = useState(0)
   const { user } = useAuth()
   const [showAuthPrompt, setShowAuthPrompt] = useState(false)
+  const [soloStarting, setSoloStarting] = useState(false)
+  const [soloStartError, setSoloStartError] = useState('')
+  const autosaveInitiatedRef = useRef(false)
 
   const isSolo = sessionData?.settings?.mode === 'solo'
 
@@ -148,13 +165,20 @@ export default function RevealScreen() {
 
   const colorPage = useMemo(() => {
     const pageId = sessionStorage.getItem(`colorsplit_page_${code}`)
-    if (!pageId) return null
-    if (pageId === 'upload') {
-      const uploadDataUrl = sessionStorage.getItem(`colorsplit_upload_${code}`)
-      return uploadDataUrl ? { id: 'upload', name: 'Custom', svgContent: null, uploadDataUrl } : null
+    if (pageId) {
+      if (pageId === 'upload') {
+        const uploadDataUrl = sessionStorage.getItem(`colorsplit_upload_${code}`)
+        return uploadDataUrl ? { id: 'upload', name: 'Custom', svgContent: null, uploadDataUrl } : null
+      }
+      return getPageById(pageId) || null
     }
-    return getPageById(pageId) || null
-  }, [code])
+    // Fallback 1: Firebase session document — survives tab close, always correct.
+    const fbPageId = sessionData?.coloringPage?.id
+    if (fbPageId && fbPageId !== 'upload') return getPageById(fbPageId) || null
+    // Fallback 2: local gallery entry (offline / expired session safety net).
+    const saved = loadGallery().find(a => a.code === code && a.pageId && a.pageId !== 'upload')
+    return saved?.pageId ? (getPageById(saved.pageId) || null) : null
+  }, [code, sessionData])
 
   const displaySize = typeof window !== 'undefined'
     ? Math.min(window.innerWidth - 48, window.innerHeight - 200, 420)
@@ -234,9 +258,11 @@ export default function RevealScreen() {
 
   useEffect(() => {
     if (phase !== 'reveal' || !capturedUrl || gallerySaved || !sessionData) return
+    if (autosaveInitiatedRef.current) return
+    autosaveInitiatedRef.current = true
     const defaultName = colorPage?.name ? `My ${colorPage.name}` : 'My Artwork'
-    setArtworkName(defaultName)
-    setShowNameModal(true)
+    doSaveArtwork(defaultName)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, capturedUrl, gallerySaved, sessionData])
 
 
@@ -270,13 +296,14 @@ export default function RevealScreen() {
               setPhase('masked-replay')
             })
             .catch(() => {
-              // Fallback: skip to slide/reveal if fetch fails
-              setPhase('slide')
-              setTimeout(() => setPhase('reveal'), 4500)
+              const hasRealTearLine = (sessionData?.tearLine?.points?.length || 0) > 0
+              if (hasRealTearLine && !sessionData?.zones) { setPhase('slide'); setTimeout(() => setPhase('reveal'), 4500) }
+              else { setPhase('reveal') }
             })
         } else {
-          setPhase('slide')
-          setTimeout(() => setPhase('reveal'), 4500)
+          const hasRealTearLine = (sessionData?.tearLine?.points?.length || 0) > 0
+          if (hasRealTearLine && !sessionData?.zones) { setPhase('slide'); setTimeout(() => setPhase('reveal'), 4500) }
+          else { setPhase('reveal') }
         }
       }
     } else {
@@ -327,6 +354,33 @@ export default function RevealScreen() {
     navigate('/', { replace: true })
   }
 
+  async function handleStartSolo() {
+    if (soloStarting) return
+    setSoloStarting(true)
+    setSoloStartError('')
+    if (!navigator.onLine) {
+      setSoloStartError("You're offline — check your connection and try again.")
+      setSoloStarting(false)
+      return
+    }
+    try { await leaveRoom(code, playerId) } catch {}
+    try {
+      const playerName = getOrCreatePlayerName()
+      const p = getProfile()
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Taking too long — check your connection and try again.')), 9000)
+      )
+      const newCode = await Promise.race([
+        createSession(playerId, playerName, true, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null),
+        timeout,
+      ])
+      navigate(`/session/${newCode}/pick`, { replace: true })
+    } catch (e) {
+      setSoloStartError(e.message || 'Could not start solo session — try again.')
+      setSoloStarting(false)
+    }
+  }
+
   async function doSaveArtwork(name) {
     if (gallerySaved || !sessionData || !capturedUrl) return
     setGallerySaved(true)
@@ -341,7 +395,10 @@ export default function RevealScreen() {
         ...(isTear ? { assignedSection: p.assignedSection } : {}),
       }))
     const leftPlayerIds = players.filter(p => p.left).map(p => p.id)
-    const pageId = sessionStorage.getItem(`colorsplit_page_${code}`) || ''
+    const pageId = sessionStorage.getItem(`colorsplit_page_${code}`)
+      || sessionData?.coloringPage?.id
+      || loadGallery().find(a => a.code === code)?.pageId
+      || ''
     const completedAt = Date.now()
     // Canonical artwork id: every player fetches the same stroke set, so the
     // earliest stroke timestamp identifies this round identically on every
@@ -383,11 +440,6 @@ export default function RevealScreen() {
     setSaveResult(ok ? 'saved' : 'failed')
     // Guests get a longer toast with a "keep it forever" account prompt
     setTimeout(() => setSaveResult(null), ok && !user ? 6500 : 3200)
-  }
-
-  function handleSaveName() {
-    doSaveArtwork(artworkName.trim() || 'My Artwork')
-    setShowNameModal(false)
   }
 
   async function handleSave() {
@@ -490,6 +542,7 @@ export default function RevealScreen() {
   }
 
 
+  const hasZones = !!sessionData?.zones
   const tearPts = sessionData?.tearLine?.points || []
   const tearOrientation = sessionData?.tearLine?.orientation ?? 'horizontal'
   const tearScale = displaySize / 400
@@ -497,10 +550,11 @@ export default function RevealScreen() {
   const w = displaySize
   const h = displaySize
 
-  // Clip paths and slide directions depend on orientation
+  // Clip paths and slide directions depend on orientation.
   const [pieceAClip, pieceBClip, pieceAInit, pieceBInit, pieceAAnimate, pieceBAnimate] = (() => {
     const rev = [...tearScaled].reverse()
     if (tearOrientation === 'vertical') {
+      // pieceA = left piece
       const fwd = tearScaled.map(p => `L ${p.x} ${p.y}`).join(' ')
       const bwd = rev.map(p => `L ${p.x} ${p.y}`).join(' ')
       const a = tearScaled.length
@@ -511,11 +565,12 @@ export default function RevealScreen() {
         : `path('M ${w / 2} 0 L ${w} 0 L ${w} ${h} L ${w / 2} ${h} Z')`
       return [a, b, { x: -w }, { x: w }, { x: 0 }, { x: 0 }]
     }
-    // horizontal
+    // horizontal — pieceA = top piece
     const fwd = tearScaled.map(p => `L ${p.x} ${p.y}`).join(' ')
     const bwd = rev.map(p => `L ${p.x} ${p.y}`).join(' ')
+    const last = tearScaled.length - 1
     const a = tearScaled.length
-      ? `path('M 0 0 L ${w} 0 L ${tearScaled[tearScaled.length - 1].x} ${tearScaled[tearScaled.length - 1].y} ${bwd} L 0 ${tearScaled[0].y} Z')`
+      ? `path('M 0 0 L ${w} 0 L ${tearScaled[last].x} ${tearScaled[last].y} ${bwd} L 0 ${tearScaled[0].y} Z')`
       : `path('M 0 0 L ${w} 0 L ${w} ${h / 2} L 0 ${h / 2} Z')`
     const b = tearScaled.length
       ? `path('M 0 ${tearScaled[0].y} ${fwd} L ${w} ${h} L 0 ${h} Z')`
@@ -526,7 +581,7 @@ export default function RevealScreen() {
   const seamPolyline = tearScaled.map(p => `${p.x},${p.y}`).join(' ')
 
   return (
-    <div className={`bg-[#1a1a1a] flex flex-col items-center ${phase === 'reveal' ? 'h-screen overflow-y-auto justify-start' : 'min-h-screen justify-center overflow-hidden'}`}>
+    <div className={`${phase === 'reveal' ? 'bg-gradient-to-b from-[#FFFDF8] via-[#FDF8F2] to-[#EDE8FF]' : 'bg-[#1a1a1a]'} flex flex-col items-center ${phase === 'reveal' ? 'h-screen overflow-y-auto justify-start' : 'min-h-screen justify-center overflow-hidden'}`}>
 
       {/* Loading */}
       {phase === 'loading' && (
@@ -601,8 +656,14 @@ export default function RevealScreen() {
             colorPage={colorPage}
             width={displaySize}
             onComplete={() => {
-              setPhase('slide')
-              setTimeout(() => setPhase('reveal'), 4500)
+              // Only the real 2-piece tear line drives the slide phase.
+              // 3-player/polygon sessions have zones and no tearLine → skip to reveal.
+              if (tearPts.length > 0 && !hasZones) {
+                setPhase('slide')
+                setTimeout(() => setPhase('reveal'), 4500)
+              } else {
+                setPhase('reveal')
+              }
             }}
           />
           <p className="text-white/35 font-body text-sm">Coloring at 8× speed</p>
@@ -658,8 +719,8 @@ export default function RevealScreen() {
                 animate={{ opacity: [0, 0, 1, 1, 0] }}
                 transition={{ delay: 2.4, duration: 1.4, times: [0, 0.1, 0.35, 0.7, 1] }}
               >
-                <polyline points={seamPolyline} fill="none" stroke="white" strokeWidth="3" strokeOpacity="0.95" />
-                <polyline points={seamPolyline} fill="none" stroke="white" strokeWidth="10" strokeOpacity="0.25" />
+                <polyline points={seamPolyline} fill="none" stroke="white" strokeWidth="1.5" strokeOpacity="0.35" />
+                <polyline points={seamPolyline} fill="none" stroke="white" strokeWidth="4" strokeOpacity="0.08" />
               </motion.svg>
             )}
           </div>
@@ -671,7 +732,7 @@ export default function RevealScreen() {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="flex flex-col items-center w-full px-5 max-w-lg gap-5"
+          className="flex flex-col items-center w-full px-5 max-w-lg gap-3"
           style={{
             paddingTop: 'max(1.5rem, env(safe-area-inset-top))',
             paddingBottom: 'max(2rem, env(safe-area-inset-bottom))',
@@ -680,115 +741,141 @@ export default function RevealScreen() {
 
           {/* ── 1. Header ────────────────────────────────────────────────────── */}
           <motion.div
-            initial={{ y: -16, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.05 }}
+            initial={{ y: -16, opacity: 0, scale: 0.95 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            transition={{ delay: 0.05, type: 'spring', stiffness: 280, damping: 24 }}
             className="text-center"
           >
             <div className="text-4xl mb-2">🎉</div>
             <h1
-              className="font-display text-3xl text-white leading-tight"
+              className="font-display text-3xl text-gray-900 leading-tight"
               style={{ fontFamily: "'Fredoka One', cursive" }}
             >
               Masterpiece!
             </h1>
-            <p className="text-white/40 font-body text-sm mt-1">
-              {isSolo ? 'You created this.' : 'You created this together.'}
+            <p className="text-gray-500 font-body text-sm mt-1">
+              {isSolo ? 'Saved to your gallery.' : 'Made together. Saved to your gallery.'}
             </p>
             {leftPlayerNames.length > 0 && (
-              <p className="text-orange-300/80 font-body text-xs mt-2 bg-orange-500/10 border border-orange-500/20 rounded-xl px-3 py-1.5 inline-block">
+              <p className="text-amber-700 font-body text-xs mt-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 inline-block">
                 👋 {leftPlayerNames.join(' & ')} left earlier — their coloring is still part of the artwork.
               </p>
             )}
           </motion.div>
 
-          {/* ── 2. Artwork hero ──────────────────────────────────────────────── */}
-          <motion.div
-            className="w-full max-w-[260px] rounded-3xl overflow-hidden bg-white"
-            style={{ aspectRatio: '1', boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 240, damping: 22, delay: 0.1 }}
-          >
-            {capturedUrl ? (
-              <img src={capturedUrl} alt="Masterpiece" className="w-full h-full object-contain" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gray-50 text-5xl">🎨</div>
-            )}
-          </motion.div>
+          {/* ── 2. Artwork hero + celebration ────────────────────────────────── */}
+          <div className="relative w-full max-w-[340px] mb-2" style={{ overflow: 'visible' }}>
+            {/* Soft radial glow behind the card */}
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                inset: -24,
+                background: 'radial-gradient(ellipse at center, rgba(139,110,248,0.22) 0%, rgba(255,107,138,0.1) 45%, transparent 70%)',
+                filter: 'blur(16px)',
+                borderRadius: '50%',
+                zIndex: 0,
+              }}
+            />
 
-          {/* ── 3. Secondary actions ─────────────────────────────────────────── */}
+            {/* Decorative confetti dots — pointer-events: none, never block taps */}
+            {CONFETTI_DOTS.map((dot, i) => (
+              <motion.div
+                key={i}
+                className="absolute rounded-full pointer-events-none"
+                style={{ width: dot.size, height: dot.size, background: dot.color, ...dot.pos, zIndex: 2 }}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 0.85, y: [0, -4, 0] }}
+                transition={{
+                  scale: { type: 'spring', stiffness: 380, damping: 14, delay: dot.delay },
+                  opacity: { duration: 0.25, delay: dot.delay },
+                  y: { duration: dot.dur, repeat: Infinity, ease: 'easeInOut', delay: dot.delay + 0.4 },
+                }}
+              />
+            ))}
+
+            {/* Artwork card */}
+            <motion.div
+              className="w-full rounded-3xl overflow-hidden bg-white relative"
+              style={{ aspectRatio: '1', boxShadow: '0 0 32px rgba(124,92,255,0.18), 0 8px 20px rgba(0,0,0,0.07)', zIndex: 1 }}
+              initial={{ scale: 0.88, opacity: 0, rotate: -1.5 }}
+              animate={{ scale: 1, opacity: 1, rotate: 0 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 20, delay: 0.1 }}
+            >
+              {capturedUrl ? (
+                <img src={capturedUrl} alt="Masterpiece" className="w-full h-full object-contain" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gray-50 text-5xl">🎨</div>
+              )}
+            </motion.div>
+          </div>
+
+          {/* ── 3. Utility row ───────────────────────────────────────────────── */}
           <motion.div
-            initial={{ opacity: 0, y: 12 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
+            transition={{ delay: 0.4, type: 'spring', stiffness: 260, damping: 24 }}
             className="w-full grid grid-cols-3 gap-2.5"
           >
             {/* Replay */}
             <button
               onClick={handleReplay}
-              className="flex flex-col items-center gap-1.5 bg-white/8 border border-white/6 rounded-2xl py-3.5 px-2 active:scale-95 transition-transform"
+              className="flex flex-col items-center gap-1.5 bg-white border border-gray-100 rounded-2xl py-2.5 px-2 active:scale-95 transition-transform shadow-sm"
             >
               <span className="text-xl">🔁</span>
-              <span className="text-white font-body text-xs font-semibold">Replay</span>
-              <span className="text-white/30 font-body text-[10px] text-center leading-tight">Watch it again</span>
+              <span className="text-gray-800 font-body text-xs font-semibold">Replay</span>
             </button>
 
-            {/* Save as PNG */}
+            {/* Download as PNG */}
             <button
               onClick={handleSave}
               disabled={!capturedUrl}
-              className="flex flex-col items-center gap-1.5 bg-white/8 border border-white/6 rounded-2xl py-3.5 px-2 active:scale-95 transition-all disabled:opacity-40"
+              className="flex flex-col items-center gap-1.5 bg-white border border-gray-100 rounded-2xl py-2.5 px-2 active:scale-95 transition-all shadow-sm disabled:opacity-40"
             >
-              <span className="text-xl">💾</span>
-              <span className="text-white font-body text-xs font-semibold">Save</span>
-              <span className="text-white/30 font-body text-[10px] text-center leading-tight">Save to device</span>
+              <span className="text-xl">⬇️</span>
+              <span className="text-gray-800 font-body text-xs font-semibold">Download</span>
             </button>
 
             {/* Share */}
             <button
               onClick={handleShare}
-              className="flex flex-col items-center gap-1.5 bg-white/8 border border-white/6 rounded-2xl py-3.5 px-2 active:scale-95 transition-transform"
+              className="flex flex-col items-center gap-1.5 bg-white border border-gray-100 rounded-2xl py-2.5 px-2 active:scale-95 transition-transform shadow-sm"
             >
               <span className="text-xl">{shareMsg ? (shareMsg.includes('failed') ? '⚠️' : '✓') : '🔗'}</span>
-              <span className="text-white font-body text-xs font-semibold">{shareMsg || 'Share'}</span>
-              <span className="text-white/30 font-body text-[10px] text-center leading-tight">
-                {shareMsg ? '' : 'Share with friends'}
-              </span>
+              <span className="text-gray-800 font-body text-xs font-semibold">{shareMsg || 'Share'}</span>
             </button>
           </motion.div>
 
-          {/* ── 3b. Shareable reveal video ───────────────────────────────────── */}
+          {/* ── 3b. Share reveal video ───────────────────────────────────────── */}
           <motion.button
-            initial={{ opacity: 0, y: 12 }}
+            initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.45, type: 'spring', stiffness: 260, damping: 24 }}
             onClick={handleShareVideo}
             disabled={!capturedUrl || videoState === 'rendering'}
-            className="w-full bg-white/8 border border-white/10 rounded-2xl py-3.5 px-4 active:scale-[0.98] transition-transform disabled:opacity-60 relative overflow-hidden"
+            className="w-full bg-white/60 border border-gray-200 rounded-xl py-2.5 px-4 active:scale-[0.98] transition-transform disabled:opacity-60 relative overflow-hidden"
           >
             {videoState === 'rendering' && (
               <div
-                className="absolute inset-y-0 left-0 bg-blue-500/25 transition-all"
+                className="absolute inset-y-0 left-0 bg-violet-500/25 transition-all"
                 style={{ width: `${Math.round(videoProgress * 100)}%` }}
               />
             )}
-            <span className="relative flex items-center justify-center gap-2 text-white font-body text-sm font-semibold text-center">
+            <span className="relative flex items-center justify-center gap-2 text-gray-400 font-body text-xs font-medium text-center">
               {videoState === 'rendering' && <>🎬 Creating your reveal video… {Math.round(videoProgress * 100)}%</>}
               {videoState === 'shared' && <>✓ Shared!</>}
               {videoState === 'downloaded' && <>✓ Video saved!</>}
               {videoState === 'image-shared' && <>✓ Shared image (video not supported here)</>}
               {videoState === 'image-saved' && <>✓ Image saved (video not supported here)</>}
-              {videoState === 'error' && <>😕 Couldn’t create the video — try again</>}
+              {videoState === 'error' && <>😕 Couldn't create the video — try again</>}
               {videoState === 'idle' && <>🎬 Share reveal video</>}
             </span>
           </motion.button>
 
-          {/* ── 4. Decision area ─────────────────────────────────────────────── */}
+          {/* ── 4. Navigation row ────────────────────────────────────────────── */}
           <motion.div
-            initial={{ opacity: 0, y: 12 }}
+            initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35 }}
+            transition={{ delay: 0.5, type: 'spring', stiffness: 260, damping: 24 }}
             className="w-full"
           >
             {/* Partner nudge — subtle banner when partner already clicked Again */}
@@ -798,16 +885,16 @@ export default function RevealScreen() {
                   initial={{ opacity: 0, y: -6, height: 0 }}
                   animate={{ opacity: 1, y: 0, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="w-full bg-blue-500/10 border border-blue-500/20 rounded-2xl px-4 py-2.5 text-center mb-3 overflow-hidden"
+                  className="w-full bg-violet-50 border border-violet-200 rounded-2xl px-4 py-2.5 text-center mb-3 overflow-hidden"
                 >
-                  <p className="text-blue-300 font-body text-xs">
+                  <p className="text-violet-600 font-body text-xs">
                     🎮 {partnersWantingAgain.join(' & ')} wants to play again
                   </p>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* ── Waiting state ─────────────────────────────────────────────── */}
+            {/* ── Waiting state / navigation rows ─────────────────────────────── */}
             <AnimatePresence mode="wait">
               {wantsAgain ? (
                 <motion.div
@@ -816,32 +903,32 @@ export default function RevealScreen() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.96 }}
                   transition={{ type: 'spring', stiffness: 300, damping: 26 }}
-                  className="w-full bg-white/6 border border-white/10 rounded-3xl px-5 py-5 flex flex-col gap-4"
+                  className="w-full bg-white border border-gray-100 rounded-3xl px-5 py-5 flex flex-col gap-4 shadow-sm"
                 >
                   <div className="text-center">
                     <div className="text-2xl mb-1.5">⏳</div>
-                    <p className="text-white/70 font-body text-sm font-semibold">
+                    <p className="text-gray-700 font-body text-sm font-semibold">
                       Waiting for your coloring buddy…
                     </p>
                   </div>
 
                   {/* Per-player status rows */}
                   <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between bg-white/5 rounded-2xl px-4 py-2.5">
-                      <span className="text-white/50 font-body text-sm">You</span>
-                      <span className="text-green-400 font-body text-sm font-semibold">Ready ✓</span>
+                    <div className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-2.5">
+                      <span className="text-gray-500 font-body text-sm">You</span>
+                      <span className="text-green-600 font-body text-sm font-semibold">Ready ✓</span>
                     </div>
                     {Object.entries(sessionData?.players || {})
                       .filter(([pid, p]) => pid !== playerId && !p.left)
                       .map(([pid, p]) => (
-                        <div key={pid} className="flex items-center justify-between bg-white/5 rounded-2xl px-4 py-2.5">
-                          <span className="text-white/50 font-body text-sm">{p.name}</span>
+                        <div key={pid} className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-2.5">
+                          <span className="text-gray-500 font-body text-sm">{p.name}</span>
                           {p.wantsAgain
-                            ? <span className="text-green-400 font-body text-sm font-semibold">Ready ✓</span>
+                            ? <span className="text-green-600 font-body text-sm font-semibold">Ready ✓</span>
                             : <motion.span
                                 animate={{ opacity: [0.4, 1, 0.4] }}
                                 transition={{ repeat: Infinity, duration: 1.6 }}
-                                className="text-white/30 font-body text-sm"
+                                className="text-gray-400 font-body text-sm"
                               >Waiting…</motion.span>
                           }
                         </div>
@@ -853,13 +940,13 @@ export default function RevealScreen() {
                   <div className="flex gap-3">
                     <button
                       onClick={handleCancelAgain}
-                      className="flex-1 bg-white/8 text-white/60 font-semibold py-3 rounded-2xl font-body text-sm active:scale-95 transition-transform border border-white/8"
+                      className="flex-1 bg-gray-100 text-gray-600 font-semibold py-3 rounded-2xl font-body text-sm active:scale-95 transition-transform border border-gray-200"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleLeaveRoom}
-                      className="flex-1 bg-red-500/10 text-red-400 font-semibold py-3 rounded-2xl font-body text-sm active:scale-95 transition-transform border border-red-500/20"
+                      className="flex-1 bg-transparent text-red-400 font-semibold py-3 rounded-2xl font-body text-sm active:scale-95 transition-transform border border-red-200"
                     >
                       Leave Room
                     </button>
@@ -868,132 +955,95 @@ export default function RevealScreen() {
 
               ) : (!isSolo && Object.entries(sessionData?.players || {})
                     .filter(([pid, p]) => pid !== playerId && p.name && !p.left).length === 0) ? (
-                /* ── Everyone else left: no partner to "play again" with ────── */
-                <motion.div key="alone" className="flex gap-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                /* ── Everyone else left: solo CTA primary, nav row below ────────── */
+                <motion.div key="alone" className="flex flex-col gap-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                   <button
-                    onClick={() => navigate('/gallery')}
-                    className="flex-1 bg-white/8 text-white font-semibold py-4 rounded-2xl font-body text-sm active:scale-95 transition-transform border border-white/6"
+                    onClick={handleStartSolo}
+                    disabled={soloStarting}
+                    className="w-full text-white font-bold py-4 rounded-2xl shadow-lifted active:scale-95 transition-transform font-body disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg, #8B6EF8 0%, #7C5CFF 100%)' }}
                   >
-                    🖼️ Gallery
+                    {soloStarting ? '…Starting solo…' : '🎨 Start Solo Coloring'}
                   </button>
-                  <button
-                    onClick={handleLeaveRoom}
-                    className="flex-[2] bg-blue-500 text-white font-bold py-4 rounded-2xl shadow-lifted active:scale-95 transition-transform font-body"
-                  >
-                    🏠 Back Home
-                  </button>
+                  {soloStartError && (
+                    <p className="text-red-500 font-body text-xs text-center -mt-1">{soloStartError}</p>
+                  )}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleLeaveRoom}
+                      className="flex-1 bg-white text-gray-600 font-semibold py-3.5 rounded-2xl font-body text-sm active:scale-95 transition-transform border border-gray-200 shadow-sm"
+                    >
+                      🏠 Back Home
+                    </button>
+                    <button
+                      onClick={() => navigate('/gallery')}
+                      className="flex-1 bg-white text-gray-800 font-semibold py-3.5 rounded-2xl font-body text-sm active:scale-95 transition-transform border border-gray-200 shadow-sm"
+                    >
+                      🖼️ View Gallery
+                    </button>
+                  </div>
                 </motion.div>
 
               ) : isSolo ? (
-                /* ── Solo: gallery + play again ─────────────────────────────── */
+                /* ── Solo: Home left, View Gallery right ────────────────────────── */
                 <motion.div key="solo" className="flex gap-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                   <button
-                    onClick={() => navigate('/gallery')}
-                    className="flex-1 bg-white/8 text-white font-semibold py-4 rounded-2xl font-body text-sm active:scale-95 transition-transform border border-white/6"
+                    onClick={() => navigate('/', { replace: true })}
+                    className="flex-1 bg-white text-gray-600 font-semibold py-3.5 rounded-2xl font-body text-sm active:scale-95 transition-transform border border-gray-200 shadow-sm"
                   >
-                    🖼️ Gallery
+                    🏠 Home
                   </button>
                   <button
-                    onClick={handleAgain}
-                    className="flex-[2] bg-blue-500 text-white font-bold py-4 rounded-2xl shadow-lifted active:scale-95 transition-transform font-body"
+                    onClick={() => navigate('/gallery')}
+                    className="flex-1 bg-white text-gray-800 font-semibold py-3.5 rounded-2xl font-body text-sm active:scale-95 transition-transform border border-gray-200 shadow-sm"
                   >
-                    🔄 Play Again
+                    🖼️ View Gallery
                   </button>
                 </motion.div>
 
               ) : (
-                /* ── Multiplayer: asymmetric Leave Room (left) + Again (right) ── */
-                <motion.div key="multi" className="flex gap-3 items-stretch" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-
-                  {/* Leave Room — smaller, red, secondary */}
-                  <div className="flex flex-col justify-between bg-red-500/8 border border-red-500/15 rounded-3xl p-4 flex-[2] gap-3">
-                    <div>
-                      <div className="text-xl mb-1.5">🚪</div>
-                      <p className="text-red-400 font-body text-sm font-semibold leading-tight">Leave Room</p>
-                      <p className="text-red-400/45 font-body text-[11px] leading-tight mt-0.5">End this session</p>
-                    </div>
-                    <button
-                      onClick={handleLeaveRoom}
-                      className="w-full bg-red-500/15 text-red-400 font-semibold py-2.5 rounded-xl font-body text-sm active:scale-95 transition-transform border border-red-500/20"
-                    >
-                      Leave
-                    </button>
-                  </div>
-
-                  {/* Play Again — larger, blue, primary CTA */}
-                  <div className="flex flex-col justify-between bg-blue-500/12 border border-blue-500/25 rounded-3xl p-4 flex-[3] gap-3">
-                    <div>
-                      <div className="text-xl mb-1.5">🔄</div>
-                      <p className="text-blue-200 font-body text-sm font-semibold leading-tight">Again</p>
-                      <p className="text-blue-200/45 font-body text-[11px] leading-tight mt-0.5">Create another masterpiece</p>
-                    </div>
-                    <button
-                      onClick={handleAgain}
-                      className="w-full bg-blue-500 text-white font-bold py-2.5 rounded-xl font-body text-sm active:scale-95 transition-transform shadow-lifted"
-                    >
-                      Play Again
-                    </button>
-                  </div>
-
+                /* ── Multiplayer: Leave Room left, View Gallery right ────────────── */
+                <motion.div key="multi" className="flex gap-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <button
+                    onClick={handleLeaveRoom}
+                    className="flex-1 bg-white text-red-400 font-semibold py-3.5 rounded-2xl font-body text-sm active:scale-95 transition-transform border border-red-200 shadow-sm"
+                  >
+                    🚪 Leave Room
+                  </button>
+                  <button
+                    onClick={() => navigate('/gallery')}
+                    className="flex-1 bg-white text-gray-800 font-semibold py-3.5 rounded-2xl font-body text-sm active:scale-95 transition-transform border border-gray-200 shadow-sm"
+                  >
+                    🖼️ View Gallery
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
           </motion.div>
 
+          {/* ── 5. Play Again — bottom primary (solo + multi only) ──────────── */}
+          <AnimatePresence>
+            {!wantsAgain && !(
+              !isSolo && Object.entries(sessionData?.players || {})
+                .filter(([pid, p]) => pid !== playerId && p.name && !p.left).length === 0
+            ) && (
+              <motion.button
+                key="play-again"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 12 }}
+                transition={{ delay: 0.55, type: 'spring', stiffness: 260, damping: 24 }}
+                onClick={handleAgain}
+                className="w-full text-white font-bold py-4 rounded-2xl shadow-lifted active:scale-95 transition-transform font-body"
+                style={{ background: 'linear-gradient(135deg, #8B6EF8 0%, #7C5CFF 100%)' }}
+              >
+                🔄 Play Again
+              </motion.button>
+            )}
+          </AnimatePresence>
+
         </motion.div>
       )}
-
-      {/* Artwork naming modal */}
-      <AnimatePresence>
-        {showNameModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end justify-center z-50"
-          >
-            <motion.div
-              initial={{ y: 100 }}
-              animate={{ y: 0 }}
-              exit={{ y: 100 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-              className="bg-cream w-full max-w-lg rounded-t-3xl p-6 pb-10"
-            >
-              <div className="text-center mb-5">
-                <div className="text-4xl mb-2">✏️</div>
-                <h2 className="font-display text-2xl text-ink mb-1" style={{ fontFamily: "'Fredoka One', cursive" }}>
-                  Name your artwork
-                </h2>
-                <p className="text-ink/50 font-body text-sm">Give your masterpiece a name before saving it to your gallery.</p>
-              </div>
-              <input
-                type="text"
-                value={artworkName}
-                onChange={e => setArtworkName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSaveName()}
-                placeholder="My Artwork"
-                maxLength={50}
-                className="w-full text-center text-lg font-body bg-white rounded-2xl px-4 py-3.5 border-2 border-ink/10 focus:border-blue-400 outline-none transition-colors text-ink mb-4"
-                autoFocus
-              />
-              <div className="flex gap-3">
-                <button
-                  onClick={() => { doSaveArtwork('My Artwork'); setShowNameModal(false) }}
-                  className="flex-1 bg-white text-ink/60 font-semibold py-3.5 rounded-2xl border border-ink/10 font-body active:scale-95 transition-transform text-sm"
-                >
-                  Skip
-                </button>
-                <button
-                  onClick={handleSaveName}
-                  className="flex-[2] bg-blue-500 text-white font-bold py-3.5 rounded-2xl shadow-lifted active:scale-95 transition-transform font-body"
-                >
-                  Save to Gallery 🖼️
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Gallery save feedback — success or honest quota failure */}
       <AnimatePresence>
@@ -1002,22 +1052,24 @@ export default function RevealScreen() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className={`fixed left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-2xl font-body text-sm font-semibold shadow-deep ${
-              saveResult === 'saved' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-            }`}
+            className="fixed left-0 right-0 flex justify-center z-[60] px-4"
             style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
           >
-            {saveResult === 'saved'
-              ? (user ? '✓ Saved to your account gallery' : '✓ Saved to your gallery')
-              : '⚠️ Couldn’t save — device storage is full. Free up space and try again.'}
-            {saveResult === 'saved' && !user && (
-              <button
-                onClick={() => { setSaveResult(null); setShowAuthPrompt(true) }}
-                className="block w-full mt-1.5 text-white/90 underline underline-offset-2 text-[12px] font-body"
-              >
-                Save it forever — create a free account
-              </button>
-            )}
+            <div className={`px-4 py-2.5 rounded-2xl font-body text-sm font-semibold shadow-deep ${
+              saveResult === 'saved' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+            }`}>
+              {saveResult === 'saved'
+                ? (user ? '✓ Saved to your account gallery' : '✓ Saved to your gallery')
+                : `⚠️ Couldn't save — device storage is full. Free up space and try again.`}
+              {saveResult === 'saved' && !user && (
+                <button
+                  onClick={() => { setSaveResult(null); setShowAuthPrompt(true) }}
+                  className="block w-full mt-1.5 text-white/90 underline underline-offset-2 text-[12px] font-body"
+                >
+                  Save it forever — create a free account
+                </button>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
