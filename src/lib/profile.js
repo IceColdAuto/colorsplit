@@ -37,6 +37,16 @@ export function clearProfile() {
   try { localStorage.removeItem(KEY) } catch {}
 }
 
+const accountKey = uid => `colorsplit_account_profile_${uid}`
+
+export function getCachedAccountProfile(uid) {
+  try { return JSON.parse(localStorage.getItem(accountKey(uid))) } catch { return null }
+}
+
+export function saveCachedAccountProfile(uid, profile) {
+  localStorage.setItem(accountKey(uid), JSON.stringify({ ...profile, updatedAt: Date.now() }))
+}
+
 export function getDefaultProfileName() {
   const adj = ['Creative', 'Colorful', 'Dreamy', 'Playful', 'Artistic']
   const noun = ['Panda', 'Fox', 'Owl', 'Star', 'Bunny']

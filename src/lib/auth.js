@@ -23,7 +23,7 @@ import {
   signOut as fbSignOut,
 } from 'firebase/auth'
 import { ref, get, set, update } from 'firebase/database'
-import { getProfile, clearProfile } from './profile'
+import { getProfile, saveProfile, clearProfile } from './profile'
 
 const EMAIL_FOR_SIGNIN_KEY = 'colorsplit_email_for_signin'
 
@@ -160,7 +160,15 @@ export async function ensureUserProfile(user) {
       patch.friendCode = await generateUniqueFriendCode(user.uid)
     }
     await update(userRef, patch)
-    return { ...profile, ...patch }
+    const merged = { ...profile, ...patch }
+    // Only write to localStorage if this user is still the active auth user.
+    if (getAuthInstance()?.currentUser?.uid === user.uid) {
+      const local = getProfile()
+      if (!local?.username?.trim()) {
+        saveProfile({ username: merged.displayName, avatarId: merged.avatarId || 'cat', colorId: merged.colorId || 'peach' })
+      }
+    }
+    return merged
   }
 
   const local = getProfile()
@@ -178,6 +186,12 @@ export async function ensureUserProfile(user) {
     lastSeenAt: Date.now(),
   }
   await set(userRef, profile)
+  // Only write to localStorage if this user is still the active auth user.
+  if (getAuthInstance()?.currentUser?.uid === user.uid) {
+    if (!local?.username?.trim()) {
+      saveProfile({ username: profile.displayName, avatarId: profile.avatarId || 'cat', colorId: profile.colorId || 'peach' })
+    }
+  }
   return profile
 }
 
