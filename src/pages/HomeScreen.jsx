@@ -663,15 +663,6 @@ export default function HomeScreen() {
           </motion.div>
         )}
 
-        {/* ── Footer ──────────────────────────────────────────────────────── */}
-        <motion.p
-          className="mt-5 text-ink/28 text-[12px] font-body tracking-wide"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.54 }}
-        >
-          No account needed · Works on iPad
-        </motion.p>
 
       </div>
 
