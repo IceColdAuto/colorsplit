@@ -1062,7 +1062,7 @@ export default function ColoringSession() {
               <img
                 src="/icons/colorsplit-icon-mini.png"
                 alt="ColorSplit"
-                className="w-10 h-10 select-none"
+                className="w-12 h-12 select-none"
                 draggable="false"
               />
             )}
