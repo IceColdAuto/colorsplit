@@ -69,10 +69,13 @@ export default function GalleryScreen() {
     if (!user) { setCloudArtworks([]); setCloudLoading(false); return }
     let cancelled = false
     setCloudLoading(true)
+    // Initial fetch unblocks the gallery render immediately.
     loadCloudGallery(user.uid)
       .then(list => { if (!cancelled) setCloudArtworks(list) })
       .catch(() => {})
       .finally(() => { if (!cancelled) setCloudLoading(false) })
+    // Migration is decoupled — silently refreshes after it completes without
+    // holding up the loading gate above.
     migrateGuestGalleryToCloud(user.uid)
       .then(() => loadCloudGallery(user.uid))
       .then(list => { if (!cancelled) setCloudArtworks(list) })
@@ -296,8 +299,21 @@ export default function GalleryScreen() {
           </div>
         )}
 
+        {/* ── Cloud loading gate (authenticated users only) ───────────────── */}
+        {user && cloudLoading && (
+          <div className="flex items-center justify-center min-h-[65vh]">
+            <div className="flex flex-col items-center gap-3">
+              <svg className="animate-spin" width="32" height="32" viewBox="0 0 32 32" fill="none" aria-label="Loading gallery">
+                <circle cx="16" cy="16" r="13" stroke="rgba(139,110,248,0.18)" strokeWidth="3"/>
+                <path d="M16 3 A13 13 0 0 1 29 16" stroke="#8B6EF8" strokeWidth="3" strokeLinecap="round"/>
+              </svg>
+              <span className="font-body text-[13px]" style={{ color: '#8A7C91' }}>Loading your gallery…</span>
+            </div>
+          </div>
+        )}
+
         {/* ── Empty state ─────────────────────────────────────────────────── */}
-        {combined.length === 0 && (
+        {combined.length === 0 && !(user && cloudLoading) && (
           <div className="flex flex-col items-center justify-center min-h-[65vh] px-8 text-center">
             {/* Framed gallery icon — large empty state version */}
             <div className="relative mb-7">
@@ -359,7 +375,7 @@ export default function GalleryScreen() {
         )}
 
         {/* ── Artwork grid ─────────────────────────────────────────────────── */}
-        {combined.length > 0 && (
+        {combined.length > 0 && !(user && cloudLoading) && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-6 pb-14">
             {combined.map((artwork, i) => {
               const hasCardReplay = artwork.strokes?.length > 0 || (artwork.mode === 'tear' && artwork.allStrokes)
