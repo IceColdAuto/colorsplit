@@ -69,6 +69,16 @@ function memOnValue(path, cb) {
   }
 }
 
+// ─── Section normalization ────────────────────────────────────────────────────
+
+// Maps legacy "left"/"right" values to stable zone IDs so older sessions
+// (still stored with "left"/"right") keep working alongside new ones.
+export function normalizeSection(section) {
+  if (section === 'left') return 'zone0'
+  if (section === 'right') return 'zone1'
+  return section // already a zone ID, null, or unknown — pass through
+}
+
 // ─── Public helpers ───────────────────────────────────────────────────────────
 
 export function generateSessionCode() {
@@ -277,6 +287,11 @@ export async function setTearLine(code, tearLine) {
   await update(ref(db, `sessions/${code}`), { tearLine })
 }
 
+export async function setZones(code, zones) {
+  if (DEMO_MODE) { memSet(`sessions/${code}/zones`, zones); return }
+  await update(ref(db, `sessions/${code}`), { zones })
+}
+
 export async function assignSections(code, players) {
   // Only active players get a section — someone who already left must not
   // claim a half of the artwork.
@@ -286,13 +301,13 @@ export async function assignSections(code, players) {
   const shuffled = [...playerIds].sort(() => Math.random() - 0.5)
   if (DEMO_MODE) {
     shuffled.forEach((pid, i) => {
-      memSet(`sessions/${code}/players/${pid}/assignedSection`, i === 0 ? 'left' : 'right')
+      memSet(`sessions/${code}/players/${pid}/assignedSection`, `zone${i}`)
     })
     return
   }
   const updates = {}
   shuffled.forEach((pid, i) => {
-    updates[`sessions/${code}/players/${pid}/assignedSection`] = i === 0 ? 'left' : 'right'
+    updates[`sessions/${code}/players/${pid}/assignedSection`] = `zone${i}`
   })
   await update(ref(db), updates)
 }
@@ -393,6 +408,7 @@ export async function resetRound(code, players) {
     memSet(`sessions/${code}/strokes`, null)
     memSet(`sessions/${code}/liveStrokes`, null)
     memSet(`sessions/${code}/tearLine`, null)
+    memSet(`sessions/${code}/zones`, null)
     memSet(`sessions/${code}/coloringPage`, null)
     memSet(`sessions/${code}/roundControllerId`, null)
     memSet(`sessions/${code}/status`, 'picking')
@@ -409,6 +425,7 @@ export async function resetRound(code, players) {
     [`sessions/${code}/strokes`]: null,
     [`sessions/${code}/liveStrokes`]: null,
     [`sessions/${code}/tearLine`]: null,
+    [`sessions/${code}/zones`]: null,
     [`sessions/${code}/coloringPage`]: null,
     [`sessions/${code}/roundControllerId`]: null,
     [`sessions/${code}/status`]: 'picking',
