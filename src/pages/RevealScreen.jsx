@@ -237,7 +237,14 @@ export default function RevealScreen() {
             setAllStrokesData(all)
             // Pre-render the final composite in the background.
             // It finishes long before MaskedTearReplay completes (canvas ops ~100ms).
-            renderTearReveal(all, data, colorPage)
+            // colorPage from useMemo may be null on first render if sessionData
+            // state hasn't updated yet (setSessionData is async). Fall back to
+            // the live subscription payload so the line art is never skipped.
+            const resolvedColorPage = colorPage
+              ?? (data?.coloringPage?.id && data.coloringPage.id !== 'upload'
+                ? getPageById(data.coloringPage.id)
+                : null)
+            renderTearReveal(all, data, resolvedColorPage)
               .then(dataUrl => { if (dataUrl) setCapturedUrl(dataUrl) })
               .catch(() => {})
             // Show drawing evolution first — same as solo timelapse
