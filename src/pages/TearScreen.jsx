@@ -1,7 +1,8 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { setTearLine, updateSessionStatus, assignSections, getOrCreatePlayerId, subscribeToSession, leaveRoom } from '../lib/session'
+import { setTearLine, setZones, updateSessionStatus, assignSections, getOrCreatePlayerId, subscribeToSession, leaveRoom } from '../lib/session'
+import { COLORING_PAGES } from '../lib/coloringPages'
 import RoomStatusBar from '../components/RoomStatusBar'
 import LeaveRoomModal from '../components/LeaveRoomModal'
 
@@ -84,6 +85,17 @@ function calculateSplit(points, orientation = 'horizontal', width = 400, height 
   return { top: 100 - pct, bottom: pct }
 }
 
+function getPagePreviewSrc(pageId, code) {
+  if (!pageId) return null
+  if (pageId === 'upload') return sessionStorage.getItem(`colorsplit_upload_${code}`) || null
+  const page = COLORING_PAGES.find(p => p.id === pageId)
+  if (!page) return null
+  if (page.thumbnailUrl) return page.thumbnailUrl
+  if (page.imageUrl) return page.imageUrl
+  if (page.svgContent) return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(page.svgContent)}`
+  return null
+}
+
 function TearPath({ points, size = 300 }) {
   if (!points?.length) return null
   const scale = size / 400
@@ -92,9 +104,290 @@ function TearPath({ points, size = 300 }) {
   ).join(' ')
   return (
     <svg className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }} width={size} height={size}>
-      <path d={d} stroke="#2D2416" strokeWidth="2.5" fill="none" strokeDasharray="7,5" strokeLinecap="round" />
+      <defs>
+        <filter id="tear-glow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="2.5" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      {/* White backing for legibility over dark artwork areas */}
+      <path d={d} stroke="white" strokeWidth="5" fill="none" strokeDasharray="7,5" strokeLinecap="round" strokeOpacity="0.6" />
+      {/* Neon coral-pink line with glow */}
+      <path d={d} stroke="#FF5C8A" strokeWidth="2.5" fill="none" strokeDasharray="7,5" strokeLinecap="round" filter="url(#tear-glow)" />
     </svg>
   )
+}
+
+// Pure helper for future 3/4-player zone generation. Not wired into any live
+// flow yet. Produces straight closed horizontal band polygons in 0–400 space.
+// Returns null for unsupported counts.
+function generateBandedZones(count) {
+  if (count !== 3 && count !== 4) return null
+  const W = 400, H = 400
+  const splits = count === 3
+    ? [Math.round(H / 3), Math.round((H * 2) / 3)]
+    : [100, 200, 300]
+  const boundaries = [0, ...splits, H]
+  const zones = {}
+  for (let i = 0; i < count; i++) {
+    const y0 = boundaries[i]
+    const y1 = boundaries[i + 1]
+    zones[`zone${i}`] = {
+      polygon: [
+        { x: 0, y: y0 },
+        { x: W, y: y0 },
+        { x: W, y: y1 },
+        { x: 0, y: y1 },
+      ],
+      areaPercent: Math.round(((y1 - y0) / H) * 100),
+    }
+  }
+  return zones
+}
+
+// Three organic radial shard zones from a near-center anchor. Each of the three
+// boundaries (anchor→edge) is a shared wavy polyline so adjacent zones touch
+// with exactly the same points, guaranteeing no gaps or overlaps.
+function generateRadialZones() {
+  const W = 400, H = 400, PERIM = 1600
+  const CANVAS_AREA = W * H
+
+  const perimPoint = (d) => {
+    d = ((d % PERIM) + PERIM) % PERIM
+    if (d <= 400) return { x: d, y: 0 }
+    if (d <= 800) return { x: 400, y: d - 400 }
+    if (d <= 1200) return { x: 1200 - d, y: 400 }
+    return { x: 0, y: 1600 - d }
+  }
+
+  const perimDist = (pt) => {
+    if (Math.abs(pt.y) < 0.5) return pt.x
+    if (Math.abs(pt.x - 400) < 0.5) return 400 + pt.y
+    if (Math.abs(pt.y - 400) < 0.5) return 800 + (400 - pt.x)
+    return 1200 + (400 - pt.y)
+  }
+
+  const polyArea = (pts) => {
+    let a = 0
+    const n = pts.length
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n
+      a += pts[i].x * pts[j].y - pts[j].x * pts[i].y
+    }
+    return Math.abs(a) / 2
+  }
+
+  const rayHit = (px, py, theta) => {
+    const dx = Math.cos(theta), dy = Math.sin(theta)
+    let minT = Infinity, hit = { x: px, y: py }
+    if (dx > 1e-9) { const t = (W - px) / dx; const y = py + t * dy; if (t > 1e-9 && y >= -0.5 && y <= H + 0.5 && t < minT) { minT = t; hit = { x: W, y: Math.max(0, Math.min(H, y)) } } }
+    if (dx < -1e-9) { const t = -px / dx; const y = py + t * dy; if (t > 1e-9 && y >= -0.5 && y <= H + 0.5 && t < minT) { minT = t; hit = { x: 0, y: Math.max(0, Math.min(H, y)) } } }
+    if (dy > 1e-9) { const t = (H - py) / dy; const x = px + t * dx; if (t > 1e-9 && x >= -0.5 && x <= W + 0.5 && t < minT) { minT = t; hit = { x: Math.max(0, Math.min(W, x)), y: H } } }
+    if (dy < -1e-9) { const t = -py / dy; const x = px + t * dx; if (t > 1e-9 && x >= -0.5 && x <= W + 0.5 && t < minT) { minT = t; hit = { x: Math.max(0, Math.min(W, x)), y: 0 } } }
+    return hit
+  }
+
+  const arc = (d1, d2) => {
+    let end = d2
+    while (end <= d1) end += PERIM
+    const pts = [perimPoint(d1)]
+    for (let c = 0; c <= 2 * PERIM; c += 400) {
+      if (c > d1 && c < end) pts.push(perimPoint(c))
+    }
+    pts.push(perimPoint(d2))
+    return pts
+  }
+
+  // Build a shared wavy boundary: [anchor, wp1, wp2, hit].
+  // Two intermediate waypoints are placed at t=0.35 and t=0.65 along the
+  // straight anchor→hit line, then displaced perpendicularly. Offset is capped
+  // at 15% of boundary length (max 55px) and all points are clamped to canvas.
+  const makeBoundary = (ax, ay, hit) => {
+    const dx = hit.x - ax, dy = hit.y - ay
+    const len = Math.sqrt(dx * dx + dy * dy)
+    if (len < 1) return [{ x: ax, y: ay }, hit]
+    const nx = -dy / len, ny = dx / len
+    const maxOff = Math.min(len * 0.15, 55)
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+    const off1 = (Math.random() - 0.5) * 2 * maxOff
+    const off2 = (Math.random() - 0.5) * 2 * maxOff
+    return [
+      { x: ax, y: ay },
+      { x: clamp(ax + dx * 0.35 + nx * off1, 0, W), y: clamp(ay + dy * 0.35 + ny * off1, 0, H) },
+      { x: clamp(ax + dx * 0.65 + nx * off2, 0, W), y: clamp(ay + dy * 0.65 + ny * off2, 0, H) },
+      hit,
+    ]
+  }
+
+  // Assemble a zone polygon from two boundaries and the perimeter arc between them.
+  // Sequence: anchor → [Bstart interior: wp1, wp2, h_start] → [arc: interior corners
+  // + h_end] → [Bend reversed: wp2, wp1] → (implicit close to anchor).
+  // arcPts.slice(1) keeps h_end so no vertex is dropped at zone junctions.
+  // [Bend].reverse().slice(1,-1) skips the now-present h_end duplicate and the
+  // trailing anchor (polygon closes implicitly), so shared boundaries are exact.
+  const buildZone = (anchor, Bstart, arcD1, arcD2, Bend) => {
+    const arcPts = arc(arcD1, arcD2)
+    return [
+      anchor,
+      ...Bstart.slice(1),                  // wp1, wp2, h_start
+      ...arcPts.slice(1),                  // interior corners + h_end
+      ...[...Bend].reverse().slice(1, -1), // wp2_end, wp1_end (no h_end dup, no anchor)
+    ]
+  }
+
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const px = 200 + (Math.random() - 0.5) * 40
+    const py = 200 + (Math.random() - 0.5) * 40
+    const base = Math.random() * Math.PI * 2
+    const STEP = (Math.PI * 2) / 3
+    const angles = [base, base + STEP, base + STEP * 2]
+
+    const hits = angles.map(a => rayHit(px, py, a))
+    const order = [0, 1, 2].sort((a, b) => perimDist(hits[a]) - perimDist(hits[b]))
+    const h = order.map(i => hits[i])
+    const d = h.map(pt => perimDist(pt))
+
+    // Three shared boundary polylines — B0 between zone2/zone0, B1 between zone0/zone1,
+    // B2 between zone1/zone2. Each is [anchor, wp1, wp2, hit].
+    const B0 = makeBoundary(px, py, h[0])
+    const B1 = makeBoundary(px, py, h[1])
+    const B2 = makeBoundary(px, py, h[2])
+
+    const anchor = { x: px, y: py }
+    const poly0 = buildZone(anchor, B0, d[0], d[1], B1)
+    const poly1 = buildZone(anchor, B1, d[1], d[2], B2)
+    const poly2 = buildZone(anchor, B2, d[2], d[0], B0)
+
+    const polys = [poly0, poly1, poly2]
+    const areas = polys.map(p => polyArea(p))
+    const totalArea = areas.reduce((s, a) => s + a, 0)
+    if (totalArea < 1) continue
+    const p0 = Math.round((areas[0] / totalArea) * 100)
+    const p1 = Math.round((areas[1] / totalArea) * 100)
+    const pcts = [p0, p1, 100 - p0 - p1]
+
+    if (pcts.every(p => p >= 25 && p <= 42)) {
+      return {
+        zone0: { polygon: poly0, areaPercent: pcts[0] },
+        zone1: { polygon: poly1, areaPercent: pcts[1] },
+        zone2: { polygon: poly2, areaPercent: pcts[2] },
+      }
+    }
+  }
+
+  // Fallback: straight radial (always balanced, no wavy offsets).
+  const px2 = 200 + (Math.random() - 0.5) * 30
+  const py2 = 200 + (Math.random() - 0.5) * 30
+  const base2 = Math.random() * Math.PI * 2
+  const STEP = (Math.PI * 2) / 3
+  const angles2 = [base2, base2 + STEP, base2 + STEP * 2]
+  const dists2 = angles2.map(a => perimDist(rayHit(px2, py2, a))).sort((a, b) => a - b)
+  const fp0 = [{ x: px2, y: py2 }, ...arc(dists2[0], dists2[1])]
+  const fp1 = [{ x: px2, y: py2 }, ...arc(dists2[1], dists2[2])]
+  const fp2 = [{ x: px2, y: py2 }, ...arc(dists2[2], dists2[0])]
+  const fAreas = [fp0, fp1, fp2].map(p => polyArea(p))
+  const fTotal = fAreas.reduce((s, a) => s + a, 0)
+  const fp0pct = Math.round((fAreas[0] / fTotal) * 100)
+  const fp1pct = Math.round((fAreas[1] / fTotal) * 100)
+  const fpcts = [fp0pct, fp1pct, 100 - fp0pct - fp1pct]
+  return {
+    zone0: { polygon: fp0, areaPercent: fpcts[0] },
+    zone1: { polygon: fp1, areaPercent: fpcts[1] },
+    zone2: { polygon: fp2, areaPercent: fpcts[2] },
+  }
+}
+
+// Organic 2×2 cross-style split for 4 players. One wavy vertical boundary
+// (top edge → centre → bottom edge) and one wavy horizontal boundary
+// (left edge → centre → right edge) cross near the middle, producing four
+// connected quadrant zones (zone0 TL, zone1 TR, zone2 BR, zone3 BL). Every
+// interior boundary segment is reused by its two neighbours in reverse order,
+// so the four polygons partition the full 400×400 canvas with no gaps,
+// no missing area, and no overlap. Not pizza slices, not horizontal bands.
+function generateCrossZones() {
+  const W = 400, H = 400
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+
+  const polyArea = (pts) => {
+    let a = 0
+    const n = pts.length
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n
+      a += pts[i].x * pts[j].y - pts[j].x * pts[i].y
+    }
+    return Math.abs(a) / 2
+  }
+
+  // One organic waypoint halfway between an edge point and the centre,
+  // displaced perpendicular to that line. Offset capped at 28% of the segment
+  // length (max 42px) and clamped so it never leaves the canvas.
+  const midWaypoint = (p, c) => {
+    const dx = c.x - p.x, dy = c.y - p.y
+    const len = Math.sqrt(dx * dx + dy * dy) || 1
+    const nx = -dy / len, ny = dx / len
+    const maxOff = Math.min(len * 0.28, 42)
+    const off = (Math.random() - 0.5) * 2 * maxOff
+    return {
+      x: clamp(p.x + dx * 0.5 + nx * off, 0, W),
+      y: clamp(p.y + dy * 0.5 + ny * off, 0, H),
+    }
+  }
+
+  for (let attempt = 0; attempt < 12; attempt++) {
+    // Centre crossing point near the middle; edge anchors near each edge's mid.
+    const C = { x: 185 + Math.random() * 30, y: 185 + Math.random() * 30 }
+    const T = { x: clamp(200 + (Math.random() - 0.5) * 80, 0, W), y: 0 }
+    const B = { x: clamp(200 + (Math.random() - 0.5) * 80, 0, W), y: H }
+    const L = { x: 0, y: clamp(200 + (Math.random() - 0.5) * 80, 0, H) }
+    const R = { x: W, y: clamp(200 + (Math.random() - 0.5) * 80, 0, H) }
+
+    const vT = midWaypoint(T, C) // shared vertical-top    (T … C)
+    const vB = midWaypoint(B, C) // shared vertical-bottom (C … B)
+    const hL = midWaypoint(L, C) // shared horizontal-left (L … C)
+    const hR = midWaypoint(R, C) // shared horizontal-right(C … R)
+
+    const TL = { x: 0, y: 0 }, TR = { x: W, y: 0 }, BR = { x: W, y: H }, BL = { x: 0, y: H }
+
+    // Shared interior boundaries — each used once forward, once reversed:
+    //   T–vT–C  : zone0 forward, zone1 reversed
+    //   C–hR–R  : zone2 forward, zone1 reversed
+    //   C–vB–B  : zone3 forward, zone2 reversed
+    //   L–hL–C  : zone3 forward, zone0 reversed
+    const poly0 = [TL, T, vT, C, hL, L] // top-left
+    const poly1 = [T, TR, R, hR, C, vT] // top-right
+    const poly2 = [R, BR, B, vB, C, hR] // bottom-right
+    const poly3 = [L, hL, C, vB, B, BL] // bottom-left
+
+    const polys = [poly0, poly1, poly2, poly3]
+    const areas = polys.map(polyArea)
+    const total = areas.reduce((s, a) => s + a, 0)
+    if (total < 1) continue
+    const p0 = Math.round((areas[0] / total) * 100)
+    const p1 = Math.round((areas[1] / total) * 100)
+    const p2 = Math.round((areas[2] / total) * 100)
+    const pcts = [p0, p1, p2, 100 - p0 - p1 - p2] // normalized to total 100
+
+    if (pcts.every(p => p >= 18 && p <= 32)) {
+      return {
+        zone0: { polygon: poly0, areaPercent: pcts[0] },
+        zone1: { polygon: poly1, areaPercent: pcts[1] },
+        zone2: { polygon: poly2, areaPercent: pcts[2] },
+        zone3: { polygon: poly3, areaPercent: pcts[3] },
+      }
+    }
+  }
+
+  // Fallback: safe straight 2×2 rectangular split — exact partition, 25% each.
+  const M = 200
+  return {
+    zone0: { polygon: [{ x: 0, y: 0 }, { x: M, y: 0 }, { x: M, y: M }, { x: 0, y: M }], areaPercent: 25 },
+    zone1: { polygon: [{ x: M, y: 0 }, { x: W, y: 0 }, { x: W, y: M }, { x: M, y: M }], areaPercent: 25 },
+    zone2: { polygon: [{ x: M, y: M }, { x: W, y: M }, { x: W, y: H }, { x: M, y: H }], areaPercent: 25 },
+    zone3: { polygon: [{ x: 0, y: M }, { x: M, y: M }, { x: M, y: H }, { x: 0, y: H }], areaPercent: 25 },
+  }
 }
 
 export default function TearScreen() {
@@ -105,14 +398,15 @@ export default function TearScreen() {
   const [tearPoints, setTearPoints] = useState(null)
   const [tearOrientation, setTearOrientation] = useState('horizontal')
   const [split, setSplit] = useState(null)
-  const [isTearing, setIsTearing] = useState(false)
   const [tooSkewed, setTooSkewed] = useState(false)
+  const [radialZones, setRadialZones] = useState(null)
+  const [crossZones, setCrossZones] = useState(null)
   const [tearing, setTearing] = useState(false)
   const [showLeaveModal, setShowLeaveModal] = useState(false)
   const [abandonedByName, setAbandonedByName] = useState(null)
   const containerRef = useRef(null)
-  const touchStartRef = useRef(null)
   const isLeavingRef = useRef(false)
+  const disconnectTimerRef = useRef(null)
 
   useEffect(() => {
     const unsub = subscribeToSession(code, (data) => {
@@ -122,8 +416,38 @@ export default function TearScreen() {
       const others = Object.entries(data.players || {}).filter(([pid]) => pid !== playerId)
       const othersActive = others.filter(([, p]) => p.name && !p.left)
       const othersLeft = others.filter(([, p]) => p.left)
+      // ── TEMP DEBUG (controller leave/disconnect detection) ──
+      const dbgControllerId = data.roundControllerId || data.hostId
+      const dbgControllerPlayer = data.players?.[dbgControllerId]
+      console.warn('[TearScreen][sub] snapshot', {
+        playerId,
+        status: data.status,
+        hostId: data.hostId,
+        roundControllerId: data.roundControllerId,
+        controllerId: dbgControllerId,
+        controllerName: dbgControllerPlayer?.name,
+        controllerLeft: dbgControllerPlayer?.left,
+        controllerConnected: dbgControllerPlayer?.connected,
+        controllerLastSeenAt: dbgControllerPlayer?.lastSeenAt,
+        controllerIsSelf: dbgControllerId === playerId,
+        controllerLeftBranchReached: dbgControllerId !== playerId && dbgControllerPlayer?.left === true,
+        players: Object.entries(data.players || {}).map(([id, p]) => ({
+          id, name: p.name, left: p.left, connected: p.connected, lastSeenAt: p.lastSeenAt,
+        })),
+      })
+      // ── END TEMP DEBUG ──
       if (othersLeft.length > 0 && othersActive.length === 0) {
         setAbandonedByName(othersLeft[0][1].name || 'The other player'); return
+      }
+      // Controller/host left while others remain (3/4-player): without this the
+      // remaining non-controllers stay stuck on "…is choosing the split" forever,
+      // since controllerId still points at the departed player and status never
+      // advances. Show them the same abandoned overlay so they can go home.
+      const controllerId = data.roundControllerId || data.hostId
+      const controllerPlayer = data.players?.[controllerId]
+      if (controllerId !== playerId && controllerPlayer?.left === true) {
+        console.warn('[TearScreen][sub] controller-left branch REACHED — showing abandoned overlay', { controllerId, name: controllerPlayer?.name })
+        setAbandonedByName(controllerPlayer?.name || 'The host'); return
       }
       setSession(data)
       if (data.tearLine) {
@@ -140,13 +464,90 @@ export default function TearScreen() {
   async function handleLeaveConfirm() {
     isLeavingRef.current = true
     setShowLeaveModal(false)
-    try { await leaveRoom(code, playerId) } catch {}
+    console.warn('[TearScreen][leave] handleLeaveConfirm → calling leaveRoom', { code, playerId })
+    try {
+      await leaveRoom(code, playerId)
+      console.warn('[TearScreen][leave] leaveRoom resolved OK', { code, playerId })
+    } catch (err) {
+      console.warn('[TearScreen][leave] leaveRoom THREW', err)
+    }
     navigate('/', { replace: true })
   }
 
   const controllerId = session?.roundControllerId || session?.hostId
   const isController = controllerId === playerId
   const controllerName = session?.players?.[controllerId]?.name || 'Other player'
+
+  const activePlayers = Object.entries(session?.players || {})
+    .filter(([, p]) => p.name && !p.left)
+  const playerCount = activePlayers.length
+
+  // Controller disconnect (tab/app closed) without an explicit leave: presence
+  // flips `connected` to false but `left` stays false, so the subscription's
+  // immediate `left === true` check never fires. Wait out a grace period for
+  // mobile/network flicker, then end the room for the remaining players if the
+  // controller is still gone. (Explicit leave stays immediate via the
+  // subscription callback; this only covers silent disconnects.)
+  const controllerConnected = session?.players?.[controllerId]?.connected
+  const controllerLeft = session?.players?.[controllerId]?.left
+  useEffect(() => {
+    const clear = () => {
+      if (disconnectTimerRef.current) {
+        clearTimeout(disconnectTimerRef.current)
+        disconnectTimerRef.current = null
+      }
+    }
+    // ── TEMP DEBUG (disconnect timer) ──
+    console.warn('[TearScreen][timer] effect run', {
+      playerId, controllerId, isController, controllerLeft, controllerConnected,
+      willArm: !(isController || controllerLeft === true || controllerConnected !== false),
+      alreadyArmed: !!disconnectTimerRef.current,
+    })
+    // ── END TEMP DEBUG ──
+    // No timer needed when: we are the controller, the controller is gone via
+    // explicit leave (handled immediately elsewhere), or it's connected/unknown.
+    if (isController || controllerLeft === true || controllerConnected !== false) {
+      clear()
+      return
+    }
+    if (!disconnectTimerRef.current) {
+      console.warn('[TearScreen][timer] ARMED 9000ms disconnect timer', { controllerId, controllerConnected, controllerLeft })
+      disconnectTimerRef.current = setTimeout(() => {
+        disconnectTimerRef.current = null
+        // Re-check against the latest session: only end the room if the
+        // controller is STILL disconnected, hasn't left, and hasn't reconnected.
+        const latest = session?.players?.[controllerId]
+        console.warn('[TearScreen][timer] FIRED — re-check', {
+          controllerId,
+          latestName: latest?.name,
+          latestLeft: latest?.left,
+          latestConnected: latest?.connected,
+          latestLastSeenAt: latest?.lastSeenAt,
+          willAbandon: controllerId !== playerId && !!latest && latest.left !== true && latest.connected === false,
+        })
+        if (controllerId !== playerId && latest && latest.left !== true && latest.connected === false) {
+          setAbandonedByName(latest.name || 'The host')
+        }
+      }, 9000)
+    }
+    return clear
+  }, [controllerId, controllerConnected, controllerLeft, isController, playerId])
+
+  useEffect(() => {
+    if (playerCount === 3 && isController && !radialZones) {
+      setRadialZones(generateRadialZones() || generateBandedZones(3))
+    }
+  }, [playerCount, isController])
+
+  useEffect(() => {
+    if (playerCount === 4 && isController && !crossZones) {
+      setCrossZones(generateCrossZones())
+    }
+  }, [playerCount, isController])
+
+  // Polygon-zone preview source: 3-player uses radial shards, 4-player uses the
+  // organic 2×2 cross. Other counts fall back to the 2-player tear-line editor.
+  const polygonZones = playerCount === 3 ? radialZones : playerCount === 4 ? crossZones : null
 
   function newTear() {
     let result, s
@@ -162,90 +563,43 @@ export default function TearScreen() {
 
   useEffect(() => { if (!tearPoints) newTear() }, [])
 
-  // Manual tear via swipe
-  const handleTouchStart = useCallback((e) => {
-    if (!isController) return
-    setIsTearing(true)
-    setTearOrientation('horizontal') // manual swipe always produces a horizontal tear
-    const rect = containerRef.current.getBoundingClientRect()
-    const t = e.touches[0]
-    const startX = t.clientX - rect.left
-    const startY = t.clientY - rect.top
-    touchStartRef.current = {
-      startTime: Date.now(),
-      rect,
-      points: [{ x: startX, y: startY }],
-    }
-  }, [isController])
-
-  const handleTouchMove = useCallback((e) => {
-    if (!isTearing || !touchStartRef.current) return
-    e.preventDefault()
-    const { rect, startTime, points } = touchStartRef.current
-    const t = e.touches[0]
-    const x = t.clientX - rect.left
-    const y = t.clientY - rect.top
-    const elapsed = (Date.now() - startTime) / 300
-    const jitter = (Math.random() - 0.5) * Math.min(elapsed, 1) * 28
-    const scaleX = 400 / rect.width
-    const scaleY = 400 / rect.height
-    const newPt = {
-      x: Math.round(Math.max(0, Math.min(400, x * scaleX))),
-      y: Math.round(Math.max(8, Math.min(392, y * scaleY + jitter))),
-    }
-    const next = [...points, newPt]
-    touchStartRef.current.points = next
-    setTearPoints(next)
-    setSplit(calculateSplit(next, 'horizontal'))
-  }, [isTearing])
-
-  const handleTouchEnd = useCallback(() => {
-    setIsTearing(false)
-    if (touchStartRef.current?.points?.length < 3) return
-    const s = calculateSplit(touchStartRef.current.points, 'horizontal')
-    if (s.top < 40 || s.bottom < 40) setTooSkewed(true)
-  }, [])
 
   async function handleConfirm() {
     const s = calculateSplit(tearPoints, tearOrientation)
-    if (s.top < 40 || s.bottom < 40) { setTooSkewed(true); return }
+    if (playerCount < 3 && (s.top < 40 || s.bottom < 40)) { setTooSkewed(true); return }
+
+    if (playerCount < 2) return
 
     setTearing(true)
 
-    // Tear sound — quieter, longer
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)()
-      const sampleRate = ctx.sampleRate
-      const duration = 0.6
-      const buf = ctx.createBuffer(1, sampleRate * duration, sampleRate)
-      const data = buf.getChannelData(0)
-      for (let i = 0; i < data.length; i++) {
-        const env = Math.exp(-i / (sampleRate * 0.15))
-        data[i] = (Math.random() * 2 - 1) * env
+    if (playerCount >= 3) {
+      const zones = playerCount === 3
+        ? (radialZones || generateRadialZones() || generateBandedZones(3))
+        : playerCount === 4
+          ? (crossZones || generateCrossZones() || generateBandedZones(4))
+          : generateBandedZones(playerCount)
+      if (!zones) return
+      try {
+        await setZones(code, zones)
+        await assignSections(code, session?.players || {})
+        setTimeout(async () => {
+          await updateSessionStatus(code, 'ready_check')
+          navigate(`/session/${code}/ready`)
+        }, 1800)
+      } catch {
+        setTimeout(() => navigate(`/session/${code}/ready`), 1800)
       }
-      const src = ctx.createBufferSource()
-      src.buffer = buf
-      const gain = ctx.createGain()
-      gain.gain.value = 0.05          // much quieter
-      const filter = ctx.createBiquadFilter()
-      filter.type = 'bandpass'
-      filter.frequency.value = 1600
-      filter.Q.value = 0.4
-      src.connect(filter)
-      filter.connect(gain)
-      gain.connect(ctx.destination)
-      src.start()
-    } catch {}
-
-    try {
-      await setTearLine(code, { points: tearPoints, split: s, orientation: tearOrientation })
-      await assignSections(code, session?.players || {})
-      setTimeout(async () => {
-        await updateSessionStatus(code, 'ready_check')
-        navigate(`/session/${code}/ready`)
-      }, 1800)
-    } catch {
-      setTimeout(() => navigate(`/session/${code}/ready`), 1800)
+    } else {
+      try {
+        await setTearLine(code, { points: tearPoints, split: s, orientation: tearOrientation })
+        await assignSections(code, session?.players || {})
+        setTimeout(async () => {
+          await updateSessionStatus(code, 'ready_check')
+          navigate(`/session/${code}/ready`)
+        }, 1800)
+      } catch {
+        setTimeout(() => navigate(`/session/${code}/ready`), 1800)
+      }
     }
   }
 
@@ -263,7 +617,7 @@ export default function TearScreen() {
       <div className="flex items-center gap-4 w-full px-6 pt-8 pb-2">
         <button onClick={() => setShowLeaveModal(true)} className="text-ink/50 font-body active:scale-95 text-lg">←</button>
         <h1 className="font-display text-2xl text-ink" style={{ fontFamily: "'Fredoka One', cursive" }}>
-          Tear the Page
+          Split the page
         </h1>
       </div>
       <RoomStatusBar session={session} code={code} />
@@ -292,56 +646,94 @@ export default function TearScreen() {
         /* Controller (or loading): full tear editor */
         <>
           <p className="text-ink/50 font-body text-sm px-6 mb-5 text-center">
-            Swipe across the preview to tear, or tap &ldquo;Randomize&rdquo;
+            Choose a split, then confirm.
           </p>
 
           <div className="px-6 w-full max-w-sm">
-            <AnimatePresence mode="wait">
-              {tearing ? (
-                <motion.div
-                  key="anim"
-                  className="relative aspect-square rounded-3xl overflow-hidden bg-white shadow-deep"
-                  initial={{ opacity: 1 }}
-                  animate={{ opacity: 1 }}
-                >
-                  <motion.div className="absolute inset-0 flex">
-                    <motion.div
-                      className="w-1/2 h-full bg-blue-50 flex items-center justify-center"
-                      animate={{ x: -50, rotate: -6 }}
-                      transition={{ delay: 0.1, type: 'spring', stiffness: 180, damping: 18 }}
-                    >
-                      <span className="text-5xl">📄</span>
-                    </motion.div>
-                    <motion.div
-                      className="w-1/2 h-full bg-blue-100 flex items-center justify-center"
-                      animate={{ x: 50, rotate: 6 }}
-                      transition={{ delay: 0.1, type: 'spring', stiffness: 180, damping: 18 }}
-                    >
-                      <span className="text-5xl">📄</span>
-                    </motion.div>
-                  </motion.div>
-                  <motion.div
-                    className="absolute inset-0 flex items-center justify-center"
-                    initial={{ opacity: 0, scale: 0.5 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.5 }}
-                  >
-                    <span className="text-6xl">✂️</span>
-                  </motion.div>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="canvas"
-                  ref={containerRef}
-                  className="relative aspect-square rounded-3xl overflow-hidden bg-white shadow-paper border border-ink/10 touch-none"
-                  style={{ width: displaySize, height: displaySize, maxWidth: '100%', margin: '0 auto' }}
-                  onTouchStart={handleTouchStart}
-                  onTouchMove={handleTouchMove}
-                  onTouchEnd={handleTouchEnd}
-                >
+            <motion.div
+              key="canvas"
+              ref={containerRef}
+              className="relative aspect-square rounded-3xl overflow-hidden bg-white shadow-paper border border-ink/10"
+              style={{ width: displaySize, height: displaySize, maxWidth: '100%', margin: '0 auto' }}
+            >
+              {(() => {
+                const pageId = session?.coloringPage?.id || sessionStorage.getItem(`colorsplit_page_${code}`)
+                const previewSrc = getPagePreviewSrc(pageId, code)
+                return previewSrc ? (
+                  <img src={previewSrc} alt="Coloring page" className="absolute inset-0 w-full h-full object-contain" draggable={false} />
+                ) : (
                   <div className="w-full h-full flex items-center justify-center opacity-20">
                     <span className="text-9xl">🎨</span>
                   </div>
+                )
+              })()}
+              {polygonZones ? (() => {
+                const scale = displaySize / 400
+                const PURPLE = { fill: 'rgba(124,92,255,0.18)', stroke: '#7C5CFF' }
+                const PINK = { fill: 'rgba(255,92,138,0.18)', stroke: '#FF5C8A' }
+                const GREEN = { fill: 'rgba(52,199,89,0.18)', stroke: '#34C759' }
+                const ORANGE = { fill: 'rgba(255,159,10,0.18)', stroke: '#FF9F0A' }
+                // Per-zone colors by index — zone0 PURPLE, zone1 PINK, zone2 GREEN
+                // (zone3 ORANGE for 4-player). Polygon fill/stroke and the badge all
+                // read ZONE_COLORS[i], so each zone's colors always match.
+                // Preview-only — geometry and zone assignment are untouched.
+                const ZONE_COLORS = [PURPLE, PINK, GREEN, ORANGE]
+                // 3-player keeps its original TL/BL/BR badge corners; 4-player
+                // places one badge per quadrant (TL, TR, BR, BL).
+                const BADGE_POS = playerCount === 4
+                  ? [
+                      { top: 8, left: 8 },
+                      { top: 8, right: 8 },
+                      { bottom: 8, right: 8 },
+                      { bottom: 8, left: 8 },
+                    ]
+                  : [
+                      { top: 8, left: 8 },
+                      { bottom: 8, left: 8 },
+                      { bottom: 8, right: 8 },
+                    ]
+                const zoneList = ['zone0', 'zone1', 'zone2', 'zone3']
+                  .map(k => polygonZones[k])
+                  .filter(Boolean)
+                // Average point position (centroid) of a polygon in 0–400 space.
+                const polygonCentroid = (polygon) => {
+                  const n = polygon.length || 1
+                  return {
+                    x: polygon.reduce((s, p) => s + p.x, 0) / n,
+                    y: polygon.reduce((s, p) => s + p.y, 0) / n,
+                  }
+                }
+                // 3-player radial shards land in random positions, so fixed corner
+                // badges can sit over the wrong zone. Place each badge at its own
+                // polygon's centroid (clamped to stay on-canvas). 4-player quadrants
+                // keep their fixed corner badges.
+                const badgeStyle = (zone, i) => {
+                  if (playerCount !== 3) return BADGE_POS[i]
+                  const c = polygonCentroid(zone.polygon)
+                  const clamp = (v) => Math.max(24, Math.min(displaySize - 24, v * scale))
+                  return { left: clamp(c.x), top: clamp(c.y), transform: 'translate(-50%, -50%)' }
+                }
+                return (
+                  <>
+                    <svg className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }} width={displaySize} height={displaySize}>
+                      {zoneList.map((zone, i) => {
+                        const pts = zone.polygon.map(p => `${Math.round(p.x * scale)},${Math.round(p.y * scale)}`).join(' ')
+                        return <polygon key={i} points={pts} fill={ZONE_COLORS[i].fill} stroke={ZONE_COLORS[i].stroke} strokeWidth="2" />
+                      })}
+                    </svg>
+                    <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 20 }}>
+                      {zoneList.map((zone, i) => (
+                        <div key={i} className="absolute" style={badgeStyle(zone, i)}>
+                          <div className="bg-white/90 backdrop-blur-sm rounded-xl px-3 py-1.5 font-display text-lg shadow-sm text-ink" style={{ fontFamily: "'Fredoka One', cursive", color: ZONE_COLORS[i].stroke }}>
+                            {zone.areaPercent}%
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )
+              })() : (
+                <>
                   {tearPoints && <TearPath points={tearPoints} size={displaySize} />}
                   {split && (
                     <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 20 }}>
@@ -357,9 +749,9 @@ export default function TearScreen() {
                       </div>
                     </div>
                   )}
-                </motion.div>
+                </>
               )}
-            </AnimatePresence>
+            </motion.div>
 
             <AnimatePresence>
               {tooSkewed && (
@@ -374,27 +766,45 @@ export default function TearScreen() {
               )}
             </AnimatePresence>
 
-            {!tearing && (
-              <div className="mt-4 flex gap-3">
-                <button
-                  onClick={newTear}
-                  className="flex-1 bg-white text-ink font-semibold py-3 rounded-2xl shadow-paper border border-ink/10 font-body text-sm active:scale-95 transition-transform"
-                >
-                  🎲 Randomize
-                </button>
-                <button
-                  onClick={handleConfirm}
-                  className="flex-1 bg-blue-500 text-white font-bold py-3 rounded-2xl shadow-lifted font-body text-sm active:scale-95 transition-all"
-                >
-                  Confirm ✓
-                </button>
-              </div>
-            )}
-            {!tearing && (
-              <p className="text-center text-ink/35 text-xs font-body mt-3">
-                Or swipe across the preview above to tear manually
-              </p>
-            )}
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={() => {
+                  if (playerCount === 3) {
+                    setRadialZones(generateRadialZones() || generateBandedZones(3))
+                    setTooSkewed(false)
+                  } else if (playerCount === 4) {
+                    setCrossZones(generateCrossZones())
+                    setTooSkewed(false)
+                  } else {
+                    newTear()
+                  }
+                }}
+                disabled={tearing}
+                className="flex-1 bg-white text-ink font-semibold py-3 rounded-2xl shadow-paper border border-ink/10 font-body text-sm active:scale-95 transition-transform disabled:opacity-40 disabled:pointer-events-none"
+              >
+                Shuffle split
+              </button>
+              <button
+                onClick={handleConfirm}
+                disabled={tearing}
+                className="flex-1 text-white font-bold py-3 rounded-2xl font-body text-sm transition-all disabled:opacity-70 disabled:pointer-events-none"
+                style={{ background: '#7C5CFF', boxShadow: tearing ? 'none' : '0 4px 12px rgba(124,92,255,0.25)' }}
+              >
+                {tearing ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <motion.span
+                      className="inline-block w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white"
+                      animate={{ rotate: 360 }}
+                      transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+                    />
+                    Preparing…
+                  </span>
+                ) : 'Confirm ✓'}
+              </button>
+            </div>
+            <p className="text-center text-ink/35 text-xs font-body mt-3">
+              {tearing ? 'Preparing your split…' : 'Shuffle the line or confirm to continue.'}
+            </p>
           </div>
         </>
       )}

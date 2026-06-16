@@ -96,7 +96,11 @@ export default function ReadyCheck() {
           className="text-ink/50 font-body active:scale-95 transition-transform text-lg"
         >←</button>
       </div>
-      <RoomStatusBar session={session} code={code} />
+      <div className="flex justify-center px-6 pt-2 pb-1">
+        <div className="rounded-2xl overflow-hidden w-full max-w-xs shadow-sm">
+          <RoomStatusBar session={session} code={code} />
+        </div>
+      </div>
       <div className="flex-1 flex flex-col items-center justify-center px-6">
       <AnimatePresence mode="wait">
         {countdown !== null ? (
@@ -114,8 +118,8 @@ export default function ReadyCheck() {
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 1.4, opacity: 0 }}
                 transition={{ duration: 0.35 }}
-                className="font-display text-9xl text-blue-500"
-                style={{ fontFamily: "'Fredoka One', cursive" }}
+                className="font-display text-9xl"
+                style={{ color: '#7C5CFF', fontFamily: "'Fredoka One', cursive" }}
               >
                 {countdown === 0 ? '🎨' : countdown}
               </motion.div>
@@ -125,11 +129,11 @@ export default function ReadyCheck() {
         ) : (
           <motion.div key="ready" className="w-full max-w-sm">
             <div className="text-center mb-8">
-              <div className="text-5xl mb-3">🏁</div>
+              <div className="text-5xl mb-3">✨</div>
               <h1 className="font-display text-4xl text-ink mb-2" style={{ fontFamily: "'Fredoka One', cursive" }}>
-                Ready?
+                Ready to color together?
               </h1>
-              <p className="text-ink/50 font-body text-sm">Tap ready when you're set to go!</p>
+              <p className="text-ink/50 font-body text-sm">We'll start when everyone is ready.</p>
             </div>
 
             <div className="bg-white rounded-3xl shadow-paper p-5 border border-ink/5 mb-5">
@@ -149,13 +153,13 @@ export default function ReadyCheck() {
                     </div>
                     {/* Ready indicator */}
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors ${
-                      player.ready ? 'bg-green-100 text-green-600' : 'bg-blue-50 text-blue-300'
+                      player.ready ? 'bg-green-100 text-green-600' : 'bg-purple-50 text-purple-300'
                     }`}>
                       {player.ready ? '✓' : '…'}
                     </div>
                     <span className="font-semibold font-body text-ink text-sm flex-1 truncate">{player.name || '—'}</span>
                     <span className={`text-xs font-semibold font-body flex-shrink-0 ${player.ready ? 'text-green-500' : 'text-ink/30'}`}>
-                      {player.ready ? 'Ready!' : 'Waiting…'}
+                      {player.ready ? 'Ready!' : 'Not ready yet'}
                     </span>
                   </div>
                 ))}
@@ -166,9 +170,10 @@ export default function ReadyCheck() {
               <motion.button
                 onClick={handleReady}
                 whileTap={{ scale: 0.95 }}
-                className="w-full bg-blue-500 text-white font-bold py-5 rounded-2xl shadow-deep font-body text-xl"
+                className="w-full text-white font-bold py-5 rounded-2xl shadow-deep font-body text-xl"
+                style={{ background: 'linear-gradient(135deg, #8B6EF8 0%, #7C5CFF 100%)' }}
               >
-                🎨 I'm Ready!
+                I'm ready
               </motion.button>
             )}
 

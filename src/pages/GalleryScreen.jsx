@@ -20,13 +20,14 @@ function formatDate(ts) {
 function contributorLabel(artwork) {
   const myId = artwork.savedByPlayerId || getOrCreatePlayerId()
   const others = (artwork.players || []).filter(p => p.id !== myId && p.name)
-  if (artwork.mode === 'solo' || others.length === 0) return 'Made by you'
+  const isTogether = artwork.mode === 'tear' || artwork.mode === 'together'
+  if (!isTogether || others.length === 0) return isTogether ? 'Colored together' : 'Colored by you'
   const names = others.map(p => p.name)
   const leftIds = new Set(artwork.leftPlayerIds || [])
   const someoneLeft = artwork.status === 'completed_after_leave'
     || others.some(p => p.left || leftIds.has(p.id))
-  if (someoneLeft) return `Started with ${names.join(' & ')} · Finished by you`
-  return `Made with ${names.join(' & ')}`
+  if (someoneLeft) return `Colored with ${names.join(' & ')} · Finished by you`
+  return `Colored with ${names.join(' & ')}`
 }
 
 function ModeBadge({ mode }) {
@@ -56,6 +57,7 @@ export default function GalleryScreen() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const { user, authAvailable } = useAuth()
   const [cloudArtworks, setCloudArtworks] = useState([])
+  const [cloudLoading, setCloudLoading] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
   const currentGuestId = useMemo(() => getOrCreatePlayerId(), [])
 
@@ -64,11 +66,13 @@ export default function GalleryScreen() {
   }, [])
 
   useEffect(() => {
-    if (!user) { setCloudArtworks([]); return }
+    if (!user) { setCloudArtworks([]); setCloudLoading(false); return }
     let cancelled = false
+    setCloudLoading(true)
     loadCloudGallery(user.uid)
       .then(list => { if (!cancelled) setCloudArtworks(list) })
       .catch(() => {})
+      .finally(() => { if (!cancelled) setCloudLoading(false) })
     migrateGuestGalleryToCloud(user.uid)
       .then(() => loadCloudGallery(user.uid))
       .then(list => { if (!cancelled) setCloudArtworks(list) })
@@ -102,7 +106,7 @@ export default function GalleryScreen() {
     setShareMsg('')
     const hasTear = artwork.mode === 'tear' && artwork.allStrokes && artwork.tearLine
     const hasSolo = artwork.strokes?.length > 0
-    setPhase(hasTear || hasSolo ? 'timelapse' : 'reveal')
+    setPhase('reveal')
   }
 
   function closeDetail() {
@@ -170,7 +174,7 @@ export default function GalleryScreen() {
   }
 
   const colorPage = selected ? getPageById(selected.pageId) : null
-  const displayWidth = Math.min(typeof window !== 'undefined' ? window.innerWidth - 48 : 327, 360)
+  const displayWidth = Math.min(typeof window !== 'undefined' ? window.innerWidth - 32 : 343, 380)
 
   const hasTearReplay = selected?.mode === 'tear' && !!selected?.allStrokes && !!selected?.tearLine
   const hasSoloReplay = !hasTearReplay && (selected?.strokes?.length > 0)
@@ -186,8 +190,8 @@ export default function GalleryScreen() {
   const artworkCount = combined.length === 0
     ? null
     : combined.length === 1
-    ? '1 artwork'
-    : `${combined.length} artworks`
+    ? '1 saved page'
+    : `${combined.length} saved pages`
 
   return (
     <motion.div
@@ -199,23 +203,23 @@ export default function GalleryScreen() {
       {/* ── Background ambiance ─────────────────────────────────────────── */}
       <div className="absolute inset-0 pointer-events-none select-none" aria-hidden="true">
         <div className="absolute -top-20 -left-20 w-[380px] h-[380px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(162,110,255,0.17) 0%, rgba(124,62,250,0.06) 45%, transparent 70%)' }} />
+          style={{ background: 'radial-gradient(circle, rgba(147,210,255,0.14) 0%, rgba(74,158,255,0.04) 45%, transparent 70%)' }} />
         <div className="absolute -top-28 -right-20 w-[420px] h-[420px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(255,189,80,0.19) 0%, rgba(255,155,46,0.07) 44%, transparent 70%)' }} />
+          style={{ background: 'radial-gradient(circle, rgba(255,192,220,0.22) 0%, rgba(236,110,170,0.06) 44%, transparent 70%)' }} />
         <div className="absolute -bottom-14 -right-14 w-[300px] h-[300px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(236,110,170,0.14) 0%, transparent 68%)' }} />
+          style={{ background: 'radial-gradient(circle, rgba(210,192,255,0.16) 0%, transparent 68%)' }} />
         <div className="absolute -bottom-20 -left-16 w-[340px] h-[340px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(74,158,255,0.14) 0%, rgba(37,99,235,0.05) 45%, transparent 70%)' }} />
+          style={{ background: 'radial-gradient(circle, rgba(147,210,255,0.11) 0%, rgba(74,158,255,0.03) 45%, transparent 70%)' }} />
         <svg className="absolute top-10 right-10 opacity-[0.09]" width="64" height="64" viewBox="0 0 64 64" fill="none">
-          <circle cx="10" cy="10" r="8" fill="#FF9B2E" />
-          <circle cx="47" cy="18" r="5.5" fill="#7C6EFA" />
-          <circle cx="18" cy="51" r="6.5" fill="#4A9EFF" />
-          <circle cx="54" cy="52" r="4" fill="#EC6EAA" />
+          <circle cx="10" cy="10" r="8" fill="#93D2FF" />
+          <circle cx="47" cy="18" r="5.5" fill="#C4ABFF" />
+          <circle cx="18" cy="51" r="6.5" fill="#93D2FF" />
+          <circle cx="54" cy="52" r="4" fill="#FFB6D5" />
         </svg>
         <svg className="absolute bottom-28 left-5 opacity-[0.07]" width="52" height="52" viewBox="0 0 52 52" fill="none">
-          <circle cx="8" cy="8" r="7" fill="#FFD07A" />
-          <circle cx="38" cy="14" r="5" fill="#7C6EFA" />
-          <circle cx="14" cy="42" r="6" fill="#4A9EFF" />
+          <circle cx="8" cy="8" r="7" fill="#93D2FF" />
+          <circle cx="38" cy="14" r="5" fill="#C4ABFF" />
+          <circle cx="14" cy="42" r="6" fill="#FFB6D5" />
         </svg>
       </div>
 
@@ -252,18 +256,26 @@ export default function GalleryScreen() {
               </div>
 
               <div>
-                <h1 className="text-[21px] leading-tight text-ink"
-                  style={{ fontFamily: "'Fredoka One', cursive" }}>
-                  Magic Gallery
+                <h1 className="text-[21px] leading-tight"
+                  style={{ fontFamily: "'Fredoka One', cursive", color: '#4A326F' }}>
+                  My Gallery
                 </h1>
-                <p className="text-ink/40 font-body text-[11px] leading-none mt-0.5">
-                  Your finished artworks and reveal replays.
+                <p className="font-body text-[11px] leading-none mt-0.5"
+                  style={{ color: '#8A7C91' }}>
+                  Your finished coloring adventures.
                 </p>
               </div>
             </div>
 
+            {user && cloudLoading && (
+              <span className="font-body text-[11px] font-medium flex-shrink-0 px-2.5 py-1 rounded-full"
+                style={{ background: 'rgba(210,192,255,0.20)', color: '#8B6EF8' }}>
+                Syncing…
+              </span>
+            )}
             {artworkCount && (
-              <span className="text-ink/28 font-body text-[12px] font-medium flex-shrink-0">
+              <span className="font-body text-[11px] font-medium flex-shrink-0 px-2.5 py-1 rounded-full"
+                style={{ background: 'rgba(147,210,255,0.18)', color: '#5A8FAA' }}>
                 {artworkCount}
               </span>
             )}
@@ -418,14 +430,14 @@ export default function GalleryScreen() {
                             <div
                               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold text-white leading-none"
                               style={{
-                                background: 'linear-gradient(135deg, #8B6EF8 0%, #4A9EFF 100%)',
-                                boxShadow: '0 2px 8px rgba(90,70,240,0.25)',
+                                background: 'linear-gradient(135deg, #F07260 0%, #EC6EAA 100%)',
+                                boxShadow: '0 2px 8px rgba(240,114,96,0.28)',
                               }}
                             >
                               <svg width="7" height="8" viewBox="0 0 8 10" fill="currentColor" aria-hidden="true">
                                 <path d="M1.5 1.5L7 5L1.5 8.5V1.5Z"/>
                               </svg>
-                              Watch reveal
+                              Replay
                             </div>
                           )}
                         </div>
@@ -459,20 +471,27 @@ export default function GalleryScreen() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-[#111] flex flex-col z-50"
+            className="fixed inset-0 flex flex-col z-50"
+            style={{ background: 'linear-gradient(160deg, #fdfcfb 0%, #f7f4ff 100%)' }}
           >
-            <div className="flex items-center justify-between px-6 pt-10 pb-3 flex-shrink-0">
-              <button onClick={closeDetail} className="text-white/55 font-body text-sm active:scale-90 transition-transform">
+            {/* Soft pastel glow centered on artwork */}
+            <div className="absolute inset-0 pointer-events-none" style={{
+              background: 'radial-gradient(ellipse 85% 52% at 50% 44%, rgba(139,110,248,0.09) 0%, transparent 68%)'
+            }} />
+
+            {/* Top bar */}
+            <div className="relative z-10 flex items-center justify-between px-6 pt-10 pb-3 flex-shrink-0">
+              <button onClick={closeDetail} className="text-ink/55 font-body text-sm active:scale-90 transition-transform">
                 ← Back
               </button>
               <div className="flex-1 text-center">
-                <span className="text-white/70 font-body text-sm font-semibold truncate px-2">
+                <span className="text-ink/70 font-body text-sm font-semibold truncate px-2">
                   {selected.name || 'My Artwork'}
                 </span>
               </div>
               <button
                 onClick={(e) => requestDelete(selected, e)}
-                className="text-white/28 active:text-white/60 transition-colors p-1"
+                className="text-ink/28 active:text-ink/55 transition-colors p-1"
                 title="Delete"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -482,83 +501,78 @@ export default function GalleryScreen() {
               </button>
             </div>
 
-            <div className="flex-1 flex flex-col items-center justify-center px-6 gap-4">
+            {/* Single centered composition — artwork + caption + actions as one unit */}
+            <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-5 pb-8">
               <AnimatePresence mode="wait">
                 {phase === 'timelapse' ? (
-                  <motion.div key="timelapse" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.02 }} className="mx-auto">
-                    {hasTearReplay ? (
-                      <MaskedTearReplay
-                        key={replayKey}
-                        allStrokes={selected.allStrokes}
-                        sessionData={tearSessionData}
-                        colorPage={colorPage}
-                        width={displayWidth}
-                        onComplete={handleTimeLapseComplete}
-                      />
-                    ) : (
-                      <TimeLapsePlayer
-                        key={replayKey}
-                        strokes={selected.strokes || []}
-                        colorPage={colorPage}
-                        width={displayWidth}
-                        onComplete={handleTimeLapseComplete}
-                      />
-                    )}
-                    <p className="text-white/35 font-body text-xs text-center mt-3">
+                  <motion.div key="timelapse" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.02 }} className="flex flex-col items-center">
+                    <div className="rounded-[28px] p-2 bg-white" style={{ boxShadow: '0 8px 36px rgba(139,110,248,0.14), 0 2px 10px rgba(0,0,0,0.07)' }}>
+                      {hasTearReplay ? (
+                        <MaskedTearReplay
+                          key={replayKey}
+                          allStrokes={selected.allStrokes}
+                          sessionData={tearSessionData}
+                          colorPage={colorPage}
+                          width={displayWidth}
+                          onComplete={handleTimeLapseComplete}
+                        />
+                      ) : (
+                        <TimeLapsePlayer
+                          key={replayKey}
+                          strokes={selected.strokes || []}
+                          colorPage={colorPage}
+                          width={displayWidth}
+                          onComplete={handleTimeLapseComplete}
+                        />
+                      )}
+                    </div>
+                    <p className="text-ink/45 font-body text-xs text-center mt-3">
                       {contributorLabel(selected)}
                     </p>
                   </motion.div>
                 ) : (
-                  <motion.div key="reveal" initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 240, damping: 22 }} className="mx-auto">
-                    {selected.finalImageUrl ? (
-                      <img src={selected.finalImageUrl} alt="Artwork" className="rounded-3xl shadow-deep" style={{ width: displayWidth, height: displayWidth, objectFit: 'contain' }} />
-                    ) : (
-                      <div className="rounded-3xl bg-gray-800 flex items-center justify-center" style={{ width: displayWidth, height: displayWidth }}>
-                        <svg width="60" height="60" viewBox="0 0 72 72" fill="none" opacity="0.25" aria-hidden="true">
-                          <rect x="2" y="5" width="68" height="58" rx="10" fill="#8B6EF8"/>
-                          <rect x="9" y="12" width="54" height="43" rx="6" fill="white"/>
-                        </svg>
-                      </div>
-                    )}
-                    <p className="text-white/35 font-body text-xs text-center mt-3">
+                  <motion.div key="reveal" initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 240, damping: 22 }} className="flex flex-col items-center w-full">
+                    <div className="rounded-[28px] p-2 bg-white" style={{ boxShadow: '0 8px 36px rgba(139,110,248,0.14), 0 2px 10px rgba(0,0,0,0.07)' }}>
+                      {selected.finalImageUrl ? (
+                        <img src={selected.finalImageUrl} alt="Artwork" className="rounded-3xl" style={{ width: displayWidth, height: displayWidth, objectFit: 'contain' }} />
+                      ) : (
+                        <div className="rounded-3xl bg-gray-100 flex items-center justify-center" style={{ width: displayWidth, height: displayWidth }}>
+                          <svg width="60" height="60" viewBox="0 0 72 72" fill="none" opacity="0.25" aria-hidden="true">
+                            <rect x="2" y="5" width="68" height="58" rx="10" fill="#8B6EF8"/>
+                            <rect x="9" y="12" width="54" height="43" rx="6" fill="white"/>
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-ink/45 font-body text-xs text-center mt-3">
                       {contributorLabel(selected)} · {formatDate(selected.completedAt)}
                     </p>
                     {!hasReplay && (
-                      <p className="text-white/25 font-body text-xs text-center mt-1">Replay unavailable for this artwork.</p>
+                      <p className="text-ink/30 font-body text-xs text-center mt-1">Replay unavailable for this artwork.</p>
                     )}
+                    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex gap-2 mt-5 max-w-sm w-full">
+                      {hasReplay && (
+                        <button
+                          onClick={() => { setReplayKey(k => k + 1); setPhase('timelapse') }}
+                          className="bg-black/[0.06] text-ink font-semibold py-3 px-4 rounded-2xl font-body text-sm active:scale-95 transition-transform whitespace-nowrap"
+                        >
+                          ⏩ Replay
+                        </button>
+                      )}
+                      <button
+                        onClick={handleSave}
+                        className="flex-1 text-white font-bold py-3 rounded-2xl active:scale-95 transition-transform font-body text-sm"
+                        style={{ background: 'linear-gradient(135deg, #8B6EF8 0%, #3B6CF6 100%)', boxShadow: '0 4px 18px rgba(90,70,240,0.28)' }}
+                      >
+                        💾 Save PNG
+                      </button>
+                      <button onClick={handleShare} className="bg-black/[0.06] text-ink font-semibold py-3 px-4 rounded-2xl font-body text-sm active:scale-95 transition-transform">
+                        {shareMsg || '🔗'}
+                      </button>
+                    </motion.div>
                   </motion.div>
                 )}
               </AnimatePresence>
-            </div>
-
-            <div className="px-6 pb-10 flex-shrink-0">
-              {phase === 'timelapse' && (
-                <button onClick={() => setPhase('reveal')} className="w-full text-white/38 font-body text-sm py-3 active:scale-95 transition-transform">
-                  Skip to final →
-                </button>
-              )}
-              {phase === 'reveal' && (
-                <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3">
-                  {hasReplay && (
-                    <button
-                      onClick={() => { setReplayKey(k => k + 1); setPhase('timelapse') }}
-                      className="bg-white/10 text-white font-semibold py-3.5 px-4 rounded-2xl font-body text-sm active:scale-95 transition-transform"
-                    >
-                      ⏩ Replay
-                    </button>
-                  )}
-                  <button
-                    onClick={handleSave}
-                    className="flex-1 text-white font-bold py-3.5 rounded-2xl active:scale-95 transition-transform font-body"
-                    style={{ background: 'linear-gradient(135deg, #8B6EF8 0%, #3B6CF6 100%)', boxShadow: '0 4px 18px rgba(90,70,240,0.32)' }}
-                  >
-                    💾 Save PNG
-                  </button>
-                  <button onClick={handleShare} className="bg-white/10 text-white font-semibold py-3.5 px-4 rounded-2xl font-body text-sm active:scale-95 transition-transform">
-                    {shareMsg || '🔗'}
-                  </button>
-                </motion.div>
-              )}
             </div>
           </motion.div>
         )}

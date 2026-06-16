@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AVATAR_COLORS, saveProfile } from '../lib/profile'
+import { AVATAR_COLORS, saveProfile, saveCachedAccountProfile } from '../lib/profile'
 import { updateCloudProfile, getUserProfile } from '../lib/auth'
 import useAuth from '../hooks/useAuth'
 import AccountSection from './AccountSection'
@@ -14,8 +14,15 @@ export default function ProfileButton({ profile, onProfileChange }) {
   const [colorId, setColorId] = useState(profile?.colorId || 'peach')
   const [saved, setSaved] = useState(false)
 
+  // Reset form state whenever the profile identity changes (account switch or sign-out).
+  useEffect(() => {
+    setUsername(profile?.username || '')
+    setAvatarId(profile?.avatarId || 'cat')
+    setColorId(profile?.colorId || 'peach')
+  }, [profile?.username, profile?.colorId, profile?.avatarId])
+
   const color = AVATAR_COLORS.find(c => c.id === colorId) || AVATAR_COLORS[0]
-  const displayColor = AVATAR_COLORS.find(c => c.id === profile?.colorId) || AVATAR_COLORS[0]
+  const displayColor = AVATAR_COLORS.find(c => c.id === colorId) || AVATAR_COLORS[0]
 
   async function openSheet() {
     // Init immediately from best local data so the sheet opens without waiting
@@ -40,9 +47,13 @@ export default function ProfileButton({ profile, onProfileChange }) {
   function handleSave() {
     const name = username.trim() || authProfile?.displayName || profile?.username || 'Player'
     const updated = { username: name, avatarId, colorId }
-    saveProfile(updated)
+    if (user?.uid) {
+      updateCloudProfile(user.uid, { displayName: name, avatarId, colorId }).catch(() => {})
+      saveCachedAccountProfile(user.uid, updated)
+    } else {
+      saveProfile(updated)
+    }
     onProfileChange(updated)
-    if (user?.uid) updateCloudProfile(user.uid, { displayName: name, avatarId, colorId }).catch(() => {})
     setSaved(true)
     setTimeout(() => { setSaved(false); setOpen(false) }, 900)
   }

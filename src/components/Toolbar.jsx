@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import LeaveRoomModal from './LeaveRoomModal'
 
 const BRUSH_SIZES = [3, 7, 12, 20, 32]
 const BRUSH_LABELS = ['XS', 'S', 'M', 'L', 'XL']
@@ -10,18 +11,8 @@ export default function Toolbar({
   onColorClick, onSelectRecentColor,
   onUndo, onRedo, onReset,
 }) {
-  const [resetArmed, setResetArmed] = useState(false)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [showSizePicker, setShowSizePicker] = useState(false)
-
-  function handleReset() {
-    if (resetArmed) {
-      onReset()
-      setResetArmed(false)
-    } else {
-      setResetArmed(true)
-      setTimeout(() => setResetArmed(false), 2200)
-    }
-  }
 
   const selectedIdx = BRUSH_SIZES.reduce((best, s, i) =>
     Math.abs(s - size) < Math.abs(BRUSH_SIZES[best] - size) ? i : best, 0)
@@ -200,21 +191,23 @@ export default function Toolbar({
         <div className="flex-1" />
 
         <button
-          onPointerDown={(e) => { e.preventDefault(); handleReset() }}
+          onPointerDown={(e) => { e.preventDefault(); setShowResetConfirm(true) }}
           style={{ touchAction: 'manipulation' }}
-          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all active:scale-90 ${
-            resetArmed ? 'bg-red-500 text-white' : 'text-ink/60'
-          }`}
+          className="w-10 h-10 flex items-center justify-center rounded-xl transition-all active:scale-90 text-ink/60"
         >
-          {resetArmed ? (
-            <span className="text-xs font-bold font-body">!</span>
-          ) : (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-            </svg>
-          )}
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+          </svg>
         </button>
+        <LeaveRoomModal
+          showConfirm={showResetConfirm}
+          onCancel={() => setShowResetConfirm(false)}
+          onConfirm={() => { onReset(); setShowResetConfirm(false) }}
+          title="Careful!"
+          subtitle="If you confirm, all coloring on this page will be removed."
+          confirmLabel="Delete all"
+        />
       </div>
     </div>
   )

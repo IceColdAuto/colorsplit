@@ -7,8 +7,9 @@ import { addFriendByCode, subscribeToFriends, normalizeFriendCode } from '../lib
 import { sendInvite } from '../lib/invites'
 import { createSession, getOrCreatePlayerId, getOrCreatePlayerName } from '../lib/session'
 import { copyText } from '../lib/share'
-import { AVATARS, AVATAR_COLORS, getProfile } from '../lib/profile'
+import { AVATAR_COLORS, getProfile } from '../lib/profile'
 import AuthModal from './AuthModal'
+import PencilTip from './PencilTip'
 
 /**
  * Account block inside the profile sheet: log in / create account CTAs when
@@ -161,15 +162,14 @@ export default function AccountSection() {
             {myFriends.length > 0 && (
               <div className="space-y-1.5 mb-3">
                 {myFriends.map(f => {
-                  const av = AVATARS.find(a => a.id === f.avatarId) || AVATARS[0]
                   const col = AVATAR_COLORS.find(c => c.id === f.colorId) || AVATAR_COLORS[0]
                   return (
                     <div key={f.uid} className="flex items-center gap-2.5">
                       <span
-                        className="w-8 h-8 rounded-[10px] flex items-center justify-center text-base flex-shrink-0"
+                        className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
                         style={{ background: col.hex }}
                       >
-                        {av.emoji}
+                        <PencilTip size={22} />
                       </span>
                       <span className="font-body text-sm text-ink font-semibold truncate flex-1 min-w-0">{f.displayName || 'Friend'}</span>
                       <button

@@ -5,16 +5,16 @@ import {
   subscribeToSession, subscribeToStrokes, addStroke, getAllStrokes,
   setPlayerDone, updatePlayerProgress, updateSessionStatus, getOrCreatePlayerId,
   updateLiveStroke, clearLiveStroke, subscribeToLiveStrokes, leaveRoom,
-  setupPresence, removeStroke, setStrokeWithId, setMyStrokes,
+  setupPresence, removeStroke, setStrokeWithId, setMyStrokes, normalizeSection,
 } from '../lib/session'
 import { getPageById } from '../lib/coloringPages'
-import { buildAllowedMask, smoothPoints, drawStroke } from '../lib/canvasUtils'
+import { buildAllowedMask, buildPolygonMask, smoothPoints, drawStroke } from '../lib/canvasUtils'
 import ColorPicker from '../components/ColorPicker'
 import Toolbar from '../components/Toolbar'
 import LeaveRoomModal from '../components/LeaveRoomModal'
 
 const CANVAS_SIZE = 800
-const MAX_ZOOM = 3
+const MAX_ZOOM = 6
 const MIN_ZOOM = 0.7
 
 // Convert 0–255 RGB channels to an uppercase #RRGGBB hex string.
@@ -48,7 +48,7 @@ function applyTearMask(maskCanvas, tearPoints, section) {
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
   ctx.fillStyle = 'rgba(28,28,28,0.92)'
   ctx.beginPath()
-  if (section === 'left') {
+  if (normalizeSection(section) === 'zone0') {
     // Hide the BOTTOM section (below tear line)
     ctx.moveTo(scaled[0].x, scaled[0].y)
     scaled.forEach(p => ctx.lineTo(p.x, p.y))
@@ -119,6 +119,7 @@ export default function ColoringSession() {
   const myStrokesRef = useRef({})           // local mirror of my committed Firebase strokes
   const lastProgressRef = useRef(0)
   const lastLiveUpdateRef = useRef(0)
+  const lastRenderedIndexRef = useRef(0)
   const touchesRef = useRef([])
   const lastPinchDistRef = useRef(null)
   const lastPanRef = useRef(null)
@@ -283,13 +284,19 @@ export default function ColoringSession() {
     const tearPoints = session?.tearLine?.points
     const mySection = session?.players?.[playerId]?.assignedSection
     const tearOrientation = session?.tearLine?.orientation ?? 'horizontal'
-    if (mode === 'tear' && tearPoints && mySection) {
+    const zones = session?.zones
+    const zonePolygon = zones?.[mySection]?.polygon
+    if (mode === 'tear' && mySection && (tearPoints || zones)) {
       maskCanvasRef.current.getContext('2d').clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
-      const maskKey = `${mySection}_${tearOrientation}_${tearPoints.length}_${tearPoints[0]?.x}_${tearPoints[0]?.y}`
+      const maskKey = zonePolygon
+        ? `poly_${mySection}_${zonePolygon.map(p => `${p.x},${p.y}`).join('|')}`
+        : `${mySection}_${tearOrientation}_${tearPoints.length}_${tearPoints[0]?.x}_${tearPoints[0]?.y}`
       if (maskKeyRef.current !== maskKey) {
         maskKeyRef.current = maskKey
         const isFirstBuild = !allowedMaskCanvasRef.current
-        allowedMaskCanvasRef.current = buildAllowedMask(tearPoints, mySection, tearOrientation)
+        allowedMaskCanvasRef.current = zonePolygon
+          ? buildPolygonMask(zonePolygon)
+          : buildAllowedMask(tearPoints, mySection, tearOrientation)
         // Count the section's pixels once — progress is measured against this, not the full canvas.
         {
           const md = allowedMaskCanvasRef.current.getContext('2d').getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE).data
@@ -362,18 +369,19 @@ export default function ColoringSession() {
     const scale = CANVAS_SIZE / 400
     const CE = CLIP_EDGE, CS = CLIP_SAFETY
     const W = CANVAS_SIZE, H = CANVAS_SIZE
+    const isZone0 = normalizeSection(section) === 'zone0'
     let sc
     if (orientation === 'vertical') {
-      const dx = section === 'left' ? -CS : CS
+      const dx = isZone0 ? -CS : CS
       sc = points.map(p => ({ x: p.x * scale + dx, y: p.y * scale }))
     } else {
-      const dy = section === 'left' ? -CS : CS
+      const dy = isZone0 ? -CS : CS
       sc = points.map(p => ({ x: p.x * scale, y: p.y * scale + dy }))
     }
     const last = sc.length - 1
     ctx.beginPath()
     if (orientation === 'vertical') {
-      if (section === 'left') {
+      if (isZone0) {
         ctx.moveTo(-CE, -CE); ctx.lineTo(sc[0].x, -CE)
         for (let i = 0; i <= last; i++) ctx.lineTo(sc[i].x, sc[i].y)
         ctx.lineTo(sc[last].x, H + CE); ctx.lineTo(-CE, H + CE)
@@ -383,7 +391,7 @@ export default function ColoringSession() {
         for (let i = last; i >= 0; i--) ctx.lineTo(sc[i].x, sc[i].y)
       }
     } else {
-      if (section === 'left') {
+      if (isZone0) {
         ctx.moveTo(-CE, -CE); ctx.lineTo(W + CE, -CE); ctx.lineTo(W + CE, sc[last].y)
         ctx.lineTo(sc[last].x, sc[last].y)
         for (let i = last - 1; i >= 0; i--) ctx.lineTo(sc[i].x, sc[i].y)
@@ -524,6 +532,9 @@ export default function ColoringSession() {
     // Firebase action log have to stay index-aligned).
     preStrokeSnapshotRef.current = ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE)
     currentStrokeRef.current = [pt]
+    lastRenderedIndexRef.current = 0
+    const sc = strokeCanvasRef.current
+    if (sc) sc.getContext('2d').clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
   }, [isDone, panMode, tool, pickColorAt])
 
   const continueDrawing = useCallback((e) => {
@@ -546,12 +557,14 @@ export default function ColoringSession() {
       const sc = strokeCanvasRef.current
       if (sc) {
         const sctx = sc.getContext('2d')
-        sctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
+        const allPts = currentStrokeRef.current
+        const from = Math.max(0, lastRenderedIndexRef.current - 2)
         sctx.save()
         buildClipPath(sctx)
-        drawStroke(sctx, { points: currentStrokeRef.current, color, opacity, size, tool: 'pencil' })
+        drawStroke(sctx, { points: allPts.slice(from), color, opacity, size, tool: 'pencil' })
         sctx.restore()
         applyAllowedMask(sctx)
+        lastRenderedIndexRef.current = allPts.length
       }
     }
 
@@ -559,14 +572,6 @@ export default function ColoringSession() {
     if (now - lastProgressRef.current > 2500) {
       lastProgressRef.current = now
       calculateProgress()
-    }
-    // Push live stroke to Firebase every 50ms so other players see it in real-time
-    if (now - lastLiveUpdateRef.current > 50) {
-      lastLiveUpdateRef.current = now
-      updateLiveStroke(code, playerId, {
-        points: currentStrokeRef.current,
-        color, opacity, size, tool,
-      }).catch(() => {})
     }
   }, [tool, color, opacity, size, isDone, panMode, code, playerId])
 
@@ -601,7 +606,7 @@ export default function ColoringSession() {
     if (preStrokeSnapshotRef.current) {
       historyRef.current.push(preStrokeSnapshotRef.current)
       actionsRef.current.push(action)
-      if (historyRef.current.length > 30) { historyRef.current.shift(); actionsRef.current.shift() }
+      if (historyRef.current.length > 10) { historyRef.current.shift(); actionsRef.current.shift() }
       preStrokeSnapshotRef.current = null
     }
     try {
@@ -691,7 +696,7 @@ export default function ColoringSession() {
     historyRef.current.push(ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE))
     // Keep the removed strokes in the action so undo can restore them.
     actionsRef.current.push({ type: 'reset', strokes: { ...myStrokesRef.current } })
-    if (historyRef.current.length > 30) { historyRef.current.shift(); actionsRef.current.shift() }
+    if (historyRef.current.length > 10) { historyRef.current.shift(); actionsRef.current.shift() }
     redoStackRef.current = []
     redoActionsRef.current = []
     myStrokesRef.current = {}
@@ -990,8 +995,9 @@ export default function ColoringSession() {
     if (mode !== 'tear' || !mySection || !tp?.length) return undefined
     const last = tp.length - 1
     const pct = (x, y) => `${(x / 4).toFixed(2)}% ${(y / 4).toFixed(2)}%`
+    const isZone0 = normalizeSection(mySection) === 'zone0'
     if (tearOrientation === 'vertical') {
-      if (mySection === 'left') {
+      if (isZone0) {
         // Left of vertical line: TL → tear forward → BL
         const forward = tp.map(p => pct(p.x, p.y)).join(', ')
         return `polygon(0% 0%, ${forward}, 0% 100%)`
@@ -1002,7 +1008,7 @@ export default function ColoringSession() {
       }
     }
     // horizontal
-    if (mySection === 'left') {
+    if (isZone0) {
       const reversed = [...tp].reverse().map(p => pct(p.x, p.y)).join(', ')
       return `polygon(0% 0%, 100% 0%, 100% ${(tp[last].y / 4).toFixed(2)}%, ${reversed}, 0% ${(tp[0].y / 4).toFixed(2)}%)`
     } else {
@@ -1049,8 +1055,8 @@ export default function ColoringSession() {
             {mode === 'tear' && mySection ? (
               <span className="font-display text-base text-ink" style={{ fontFamily: "'Fredoka One', cursive" }}>
                 {tearOrientation === 'vertical'
-                  ? (mySection === 'left' ? '◀ Left' : '▶ Right')
-                  : (mySection === 'left' ? '▲ Top' : '▼ Bottom')}
+                  ? (normalizeSection(mySection) === 'zone0' ? '◀ Left' : '▶ Right')
+                  : (normalizeSection(mySection) === 'zone0' ? '▲ Top' : '▼ Bottom')}
               </span>
             ) : (
               <img

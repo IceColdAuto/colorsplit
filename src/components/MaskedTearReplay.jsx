@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { buildAllowedMask, smoothPoints } from '../lib/canvasUtils'
+import { buildAllowedMask, buildPolygonMask, smoothPoints } from '../lib/canvasUtils'
 
 const CANVAS_SIZE = 800
-const POINTS_PER_FRAME = 8
 const PAUSE_BETWEEN_STROKES = 2
+const TARGET_SECONDS = 30
 
 /**
  * MaskedTearReplay
@@ -24,6 +24,9 @@ const PAUSE_BETWEEN_STROKES = 2
  */
 export default function MaskedTearReplay({ allStrokes, sessionData, colorPage, width, onComplete }) {
   const displayRef = useRef(null)
+  const speedRef = useRef(1)
+  const skipRef = useRef(false)
+  const [speed, setSpeed] = useState(1)
   const [progress, setProgress] = useState(0)
   const [done, setDone] = useState(false)
 
@@ -33,7 +36,7 @@ export default function MaskedTearReplay({ allStrokes, sessionData, colorPage, w
 
     async function run() {
       const tearPoints = sessionData?.tearLine?.points
-      if (!tearPoints?.length) { onComplete?.(); return }
+      if (!tearPoints?.length && !sessionData?.zones) { onComplete?.(); return }
 
       const players = Object.entries(sessionData.players || {})
         .filter(([, p]) => p.assignedSection)
@@ -60,7 +63,9 @@ export default function MaskedTearReplay({ allStrokes, sessionData, colorPage, w
         c.width = CANVAS_SIZE
         c.height = CANVAS_SIZE
         playerCanvases[pid] = c
-        playerMasks[pid] = buildAllowedMask(tearPoints, section, orientation)
+        playerMasks[pid] = sessionData?.zones?.[section]?.polygon
+          ? buildPolygonMask(sessionData.zones[section].polygon)
+          : buildAllowedMask(tearPoints, section, orientation)
       }
 
       // Load contour image before animating so it's ready on frame 1
@@ -116,13 +121,46 @@ export default function MaskedTearReplay({ allStrokes, sessionData, colorPage, w
       }
 
       const totalPts = sortedStrokes.reduce((n, { stroke }) => n + (stroke.points?.length || 0), 0)
+      const basePointsPerFrame = Math.max(1, Math.ceil(totalPts / (TARGET_SECONDS * 60)))
       let drawn = 0
       let sIdx = 0
       let pIdx = 0
       let wait = 0
 
+      function flushRemaining() {
+        while (sIdx < sortedStrokes.length) {
+          const { stroke, pid } = sortedStrokes[sIdx]
+          const pts = smoothPoints(stroke.points || [])
+          if (pts.length) {
+            const ctx = playerCanvases[pid].getContext('2d')
+            const isEraser = stroke.tool === 'eraser'
+            ctx.save()
+            ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over'
+            ctx.globalAlpha = isEraser ? 1 : (stroke.opacity ?? 1)
+            ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : (stroke.color || '#000')
+            ctx.lineWidth = stroke.size || 12
+            ctx.lineCap = 'round'
+            ctx.lineJoin = 'round'
+            ctx.beginPath()
+            ctx.moveTo(pts[Math.max(0, pIdx - 1)].x, pts[Math.max(0, pIdx - 1)].y)
+            for (let i = pIdx; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y)
+            ctx.stroke()
+            ctx.restore()
+          }
+          sIdx++
+          pIdx = 0
+        }
+        for (const { pid } of players) applyMask(pid)
+        compositeFrame()
+        setProgress(100)
+        setDone(true)
+        onComplete?.()
+      }
+
       function frame() {
         if (cancelled) return
+
+        if (skipRef.current) { flushRemaining(); return }
 
         // All strokes done
         if (sIdx >= sortedStrokes.length) {
@@ -146,7 +184,8 @@ export default function MaskedTearReplay({ allStrokes, sessionData, colorPage, w
 
         const ctx = playerCanvases[pid].getContext('2d')
         const from = pIdx
-        const to = Math.min(pIdx + POINTS_PER_FRAME - 1, pts.length - 1)
+        const pointsThisFrame = Math.max(1, Math.round(basePointsPerFrame * speedRef.current))
+        const to = Math.min(pIdx + pointsThisFrame - 1, pts.length - 1)
         const isEraser = stroke.tool === 'eraser'
 
         ctx.save()
@@ -199,9 +238,28 @@ export default function MaskedTearReplay({ allStrokes, sessionData, colorPage, w
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
       />
       {!done && (
-        <div className="absolute bottom-3 left-3 z-10 bg-black/60 backdrop-blur-sm text-white text-xs font-body px-2.5 py-1.5 rounded-xl flex items-center gap-1.5">
-          <span>⏩</span>
-          <span>8× replay · {progress}%</span>
+        <div className="absolute bottom-3 left-3 right-3 z-10 flex items-center gap-2">
+          <div className="bg-black/60 backdrop-blur-sm text-white text-xs font-body px-2.5 py-1.5 rounded-xl flex items-center gap-1.5">
+            <span>⏩</span>
+            <span>{speed}× · {progress}%</span>
+          </div>
+          <div className="flex gap-1 ml-auto">
+            {[1, 2, 4, 8, 16].map(s => (
+              <button
+                key={s}
+                onPointerDown={() => { speedRef.current = s; setSpeed(s) }}
+                className={`text-xs font-body px-2 py-1.5 rounded-lg ${speed === s ? 'bg-white text-black' : 'bg-black/60 backdrop-blur-sm text-white'}`}
+              >
+                {s}×
+              </button>
+            ))}
+            <button
+              onPointerDown={() => { skipRef.current = true }}
+              className="text-xs font-body px-2.5 py-1.5 rounded-lg bg-white text-black font-semibold ml-1"
+            >
+              Skip
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -3,21 +3,20 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { COLORING_PAGES, CATEGORIES, DURATIONS } from '../lib/coloringPages'
 import { updateColoringPage, updateSessionStatus, updateSessionSettings, updateRoundController, subscribeToSession, getOrCreatePlayerId, leaveRoom, clearActiveRoom } from '../lib/session'
-import { generatePalette } from '../lib/gallery'
+
 import RoomStatusBar from '../components/RoomStatusBar'
 import LeaveRoomModal from '../components/LeaveRoomModal'
 
-const DIFFICULTY_TABS = ['easy', 'medium', 'hard']
+const DIFFICULTY_TABS = ['medium', 'hard']
+
+const PRIMARY_GRADIENT = 'linear-gradient(135deg, #8B6EF8 0%, #7C5CFF 100%)'
 
 export default function ColoringPagePicker() {
   const { code } = useParams()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('easy')
+  const [activeTab, setActiveTab] = useState('medium')
   const [selected, setSelected] = useState(null)
   const [session, setSession] = useState(null)
-  const [paletteEnabled, setPaletteEnabled] = useState(false)
-  const [showPaletteChallenge, setShowPaletteChallenge] = useState(false)
-  const [soloPalette, setSoloPalette] = useState([])
 
   const playerId = getOrCreatePlayerId()
   const filtered = useMemo(() => COLORING_PAGES.filter(p => p.duration === activeTab), [activeTab])
@@ -65,17 +64,9 @@ export default function ColoringPagePicker() {
     sessionStorage.setItem(`colorsplit_page_${code}`, selected.id)
 
     if (isSolo) {
-      if (paletteEnabled) {
-        const palette = generatePalette(5)
-        sessionStorage.setItem(`colorsplit_palette_${code}`, JSON.stringify(palette))
-        setSoloPalette(palette)
-        setShowPaletteChallenge(true)
-      } else {
-        // Free color — clear any previous palette
-        sessionStorage.removeItem(`colorsplit_palette_${code}`)
-        try { await updateSessionStatus(code, 'coloring') } catch {}
-        navigate(`/session/${code}/color`)
-      }
+      sessionStorage.removeItem(`colorsplit_palette_${code}`)
+      try { await updateSessionStatus(code, 'coloring') } catch {}
+      navigate(`/session/${code}/color`)
     } else {
       // Multiplayer: hardcoded to Tear Mode + Reveal at End, skip settings screen.
       try {
@@ -94,231 +85,153 @@ export default function ColoringPagePicker() {
     navigate('/', { replace: true })
   }
 
-  async function handleStartFromPalette() {
-    try { await updateSessionStatus(code, 'coloring') } catch {}
-    navigate(`/session/${code}/color`)
-  }
-
-  function handleUpload(e) {
-    const file = e.target.files[0]
-    if (!file) return
-    const objectUrl = URL.createObjectURL(file)
-    // FileReader gives us a persistent dataURL that survives navigation
-    const reader = new FileReader()
-    reader.onload = (evt) => {
-      setSelected({
-        id: 'upload',
-        name: file.name,
-        svgContent: null,
-        imageUrl: objectUrl,
-        uploadDataUrl: evt.target.result,
-        duration: activeTab,
-        category: 'upload',
-      })
-    }
-    reader.readAsDataURL(file)
-  }
 
   return (
     <motion.div
-      className="min-h-screen bg-cream flex flex-col"
+      className="min-h-screen relative"
+      style={{ background: '#FDF8F2' }}
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
     >
-      {/* Header */}
-      <div className="flex items-center gap-4 px-6 pt-8 pb-4">
-        <button
-          onClick={() => {
-            // Explicit navigation: after "Play Again" the history entry behind
-            // this screen is /color, whose status subscription bounces straight
-            // back here — navigate(-1) traps the user on this screen forever.
-            if (isSolo) { clearActiveRoom(); navigate('/'); return }
-            setShowLeaveModal(true)
-          }}
-          className="text-ink/50 font-body active:scale-95 transition-transform text-lg"
-        >←</button>
-        <h1 className="font-display text-2xl text-ink" style={{ fontFamily: "'Fredoka One', cursive" }}>
-          Choose a Coloring Page
-        </h1>
+      {/* Decorative background blobs — mirrors home screen palette at lower opacity */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-16 -right-16 w-72 h-72 rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(255,155,46,0.13) 0%, transparent 70%)' }} />
+        <div className="absolute top-1/3 -left-20 w-60 h-60 rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(162,110,255,0.11) 0%, transparent 70%)' }} />
+        <div className="absolute bottom-40 -right-10 w-52 h-52 rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(236,110,170,0.09) 0%, transparent 70%)' }} />
       </div>
 
-      {!isSolo && <RoomStatusBar session={session} code={code} />}
+      {/* Centered content column — constrains layout on desktop */}
+      <div className="relative max-w-lg mx-auto flex flex-col min-h-screen">
 
-      {/* Level tabs */}
-      <div className="flex gap-2 px-6 mb-4">
-        {DIFFICULTY_TABS.map(d => (
+        {/* Header */}
+        <div className="flex items-start gap-4 px-6 pt-10 pb-4">
           <button
-            key={d}
-            onClick={() => setActiveTab(d)}
-            className={`flex-1 py-2.5 px-3 rounded-2xl font-semibold font-body text-sm transition-colors duration-150 active:scale-95 ${
-              activeTab === d
-                ? 'bg-blue-500 text-white'
-                : 'bg-white/80 text-ink/55 border border-ink/10'
-            }`}
-          >
-            <div>{DURATIONS[d].label}</div>
-            <div className={`text-xs font-normal ${activeTab === d ? 'text-white/75' : 'text-ink/35'}`}>{DURATIONS[d].desc}</div>
-          </button>
-        ))}
-      </div>
-
-      {/* Grid */}
-      <div className="flex-1 overflow-y-auto px-6 pb-44 no-scrollbar">
-        <div className="grid grid-cols-2 gap-4">
-          <AnimatePresence initial={false}>
-            {filtered.map(page => (
-              <motion.button
-                key={page.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                onClick={() => setSelected(page)}
-                className={`relative bg-white rounded-3xl shadow-paper overflow-hidden border-2 transition-all active:scale-95 ${
-                  selected?.id === page.id ? 'border-blue-500 shadow-lifted' : 'border-transparent'
-                }`}
-              >
-                <div className="aspect-square p-2 flex items-center justify-center overflow-hidden">
-                  {page.svgContent ? (
-                    <div
-                      className="w-full h-full"
-                      style={{ lineHeight: 0 }}
-                      dangerouslySetInnerHTML={{
-                        __html: page.svgContent.replace(
-                          /width="400" height="400"/,
-                          'width="100%" height="100%" style="display:block"'
-                        )
-                      }}
-                    />
-                  ) : (
-                    <img
-                      src={page.thumbnailUrl || page.imageUrl}
-                      alt={page.name}
-                      className="w-full h-full object-contain"
-                      style={{ display: 'block' }}
-                      loading="lazy"
-                    />
-                  )}
-                </div>
-                <div className="px-3 pb-3 text-left">
-                  <div className="font-semibold font-body text-ink text-sm">{page.name}</div>
-                  <div className="text-ink/40 text-xs font-body">{CATEGORIES[page.category] || page.category}</div>
-                </div>
-                {selected?.id === page.id && (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute top-2 right-2 w-7 h-7 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold"
-                  >
-                    ✓
-                  </motion.div>
-                )}
-              </motion.button>
-            ))}
-          </AnimatePresence>
-
-          {/* Upload card — solo only; dataURL is not synced in multiplayer */}
-          {isSolo && (
-            <label className="bg-white rounded-3xl shadow-paper overflow-hidden border-2 border-dashed border-ink/20 aspect-square flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-95 transition-transform hover:border-blue-400">
-              <span className="text-3xl">📁</span>
-              <span className="font-semibold font-body text-ink/60 text-sm text-center px-3">Upload your own</span>
-              <span className="text-ink/30 text-xs font-body">PNG or JPG</span>
-              <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
-            </label>
-          )}
+            onClick={() => {
+              // Explicit navigation: after "Play Again" the history entry behind
+              // this screen is /color, whose status subscription bounces straight
+              // back here — navigate(-1) traps the user on this screen forever.
+              if (isSolo) { clearActiveRoom(); navigate('/'); return }
+              setShowLeaveModal(true)
+            }}
+            className="text-ink/50 font-body active:scale-95 transition-transform text-lg mt-1"
+          >←</button>
+          <div>
+            <h1 className="font-display text-2xl leading-tight" style={{ fontFamily: "'Fredoka One', cursive", color: '#4A326F' }}>
+              Pick your page <span style={{ color: '#EC6EAA' }}>✦</span>
+            </h1>
+            <p className="font-body text-sm mt-1" style={{ color: '#8A7C91' }}>Find your next coloring adventure.</p>
+          </div>
         </div>
 
-        {selected?.id === 'upload' && selected?.imageUrl && (
-          <div className="mt-4 bg-white rounded-3xl shadow-paper p-4 border-2 border-blue-500">
-            <p className="font-semibold font-body text-ink mb-2 text-sm">Upload: {selected.name}</p>
-            <img src={selected.imageUrl} alt="upload preview" className="w-full rounded-xl object-contain max-h-40" />
-          </div>
-        )}
-      </div>
-
-      {/* Bottom bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-cream/95 backdrop-blur-sm px-6 pb-8 pt-4 border-t border-ink/5 space-y-3">
-        {/* Palette Challenge toggle (solo only) */}
-        {isSolo && (
-          <div className="flex items-center justify-between bg-white rounded-2xl px-4 py-3 border border-ink/8">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#FFF3E0,#FFD4A3)' }}>
-                <span className="text-lg">🎨</span>
-              </div>
-              <div>
-                <div className="font-semibold font-body text-ink text-sm">Palette Challenge</div>
-                <div className="text-ink/40 text-xs font-body">5 random colors, locked</div>
-              </div>
+        {!isSolo && (
+          <div className="flex justify-center px-6 pb-2">
+            <div className="rounded-2xl overflow-hidden w-full max-w-xs shadow-sm">
+              <RoomStatusBar session={session} code={code} />
             </div>
-            {/* Toggle switch */}
-            <button
-              onClick={() => setPaletteEnabled(v => !v)}
-              className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${paletteEnabled ? 'bg-blue-500' : 'bg-ink/15'}`}
-            >
-              <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-all ${paletteEnabled ? 'left-6' : 'left-0.5'}`} />
-            </button>
           </div>
         )}
 
-        <button
-          onClick={handleConfirm}
-          disabled={!selected}
-          className="w-full bg-blue-500 text-white font-bold py-4 rounded-2xl shadow-lifted active:scale-95 transition-all font-body text-lg disabled:opacity-40"
-        >
-          {selected ? `Use "${selected.name}" →` : 'Select a coloring page'}
-        </button>
-      </div>
-
-      {/* Palette challenge reveal overlay */}
-      <AnimatePresence>
-        {showPaletteChallenge && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-ink/70 backdrop-blur-sm flex items-end justify-center z-50"
-          >
-            <motion.div
-              initial={{ y: 120 }}
-              animate={{ y: 0 }}
-              exit={{ y: 120 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-              className="bg-cream w-full max-w-lg rounded-t-3xl p-6 pb-10"
+        {/* Category tabs — pill style, centered, not stretched */}
+        <div className="flex justify-center gap-2 px-6 mt-2 mb-4">
+          {DIFFICULTY_TABS.map(d => (
+            <button
+              key={d}
+              onClick={() => setActiveTab(d)}
+              className={`py-1.5 px-4 rounded-2xl font-semibold font-body text-sm transition-all duration-150 active:scale-95 whitespace-nowrap ${
+                activeTab === d ? 'shadow-sm' : 'bg-white/80 text-ink/55 border border-ink/10'
+              }`}
+              style={activeTab === d ? { background: '#EDE0FF', color: '#7C6EFA' } : {}}
             >
-              <div className="text-center mb-5">
-                <div className="text-4xl mb-2">🎨</div>
-                <h2 className="font-display text-2xl text-ink mb-1" style={{ fontFamily: "'Fredoka One', cursive" }}>
-                  Your Color Challenge!
-                </h2>
-                <p className="text-ink/50 font-body text-sm leading-relaxed">
-                  These 5 colors are locked in for this session.<br />You can only use these — make them count!
-                </p>
-              </div>
-              <div className="flex justify-center gap-4 mb-6">
-                {soloPalette.map((c, i) => (
-                  <motion.div
-                    key={c}
-                    initial={{ scale: 0, rotate: -20 }}
-                    animate={{ scale: 1, rotate: 0 }}
-                    transition={{ delay: i * 0.08, type: 'spring', stiffness: 400, damping: 20 }}
-                    className="flex flex-col items-center gap-1.5"
-                  >
-                    <div className="rounded-2xl shadow-lifted" style={{ width: 48, height: 48, background: c }} />
-                    <span className="text-ink/35 text-xs font-body font-mono">{c}</span>
-                  </motion.div>
-                ))}
-              </div>
-              <button
-                onClick={handleStartFromPalette}
-                className="w-full bg-blue-500 text-white font-bold py-4 rounded-2xl shadow-lifted active:scale-95 transition-all font-body text-lg"
-              >
-                Start Coloring! 🖌️
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              {DURATIONS[d].label}
+            </button>
+          ))}
+        </div>
+
+        {/* Grid */}
+        <div className="flex-1 overflow-y-auto px-6 pb-40 no-scrollbar">
+          <div className="grid grid-cols-2 gap-5">
+            <AnimatePresence initial={false}>
+              {filtered.map(page => (
+                <motion.button
+                  key={page.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  onClick={() => setSelected(page)}
+                  className={`relative rounded-3xl shadow-paper overflow-hidden border-2 transition-all active:scale-95 ${
+                    selected?.id === page.id ? 'shadow-lifted' : 'border-transparent'
+                  }`}
+                  style={{
+                    background: '#FEFCF8',
+                    borderColor: selected?.id === page.id ? 'rgba(124,92,255,0.35)' : 'transparent',
+                  }}
+                >
+                  <div className="aspect-square p-2 flex items-center justify-center overflow-hidden">
+                    {page.svgContent ? (
+                      <div
+                        className="w-full h-full"
+                        style={{ lineHeight: 0 }}
+                        dangerouslySetInnerHTML={{
+                          __html: page.svgContent.replace(
+                            /width="400" height="400"/,
+                            'width="100%" height="100%" style="display:block"'
+                          )
+                        }}
+                      />
+                    ) : (
+                      <img
+                        src={page.thumbnailUrl || page.imageUrl}
+                        alt={page.name}
+                        className="w-full h-full object-contain"
+                        style={{ display: 'block' }}
+                        loading="lazy"
+                      />
+                    )}
+                  </div>
+                  <div className="px-3 pb-3 text-left">
+                    <div className="font-semibold font-body text-ink text-sm">{page.name}</div>
+                    <div className="text-ink/40 text-xs font-body">{CATEGORIES[page.category] || page.category}</div>
+                  </div>
+                  {selected?.id === page.id && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-white text-sm font-bold"
+                      style={{ background: '#7C5CFF' }}
+                    >
+                      ✓
+                    </motion.div>
+                  )}
+                </motion.button>
+              ))}
+            </AnimatePresence>
+
+          </div>
+        </div>
+
+      </div>{/* end centered column */}
+
+      {/* Bottom bar — full width bg, content constrained to match column */}
+      <div className="fixed bottom-0 left-0 right-0 backdrop-blur-sm border-t border-ink/5" style={{ background: 'rgba(253,248,242,0.96)' }}>
+        <div className="max-w-lg mx-auto px-6 pb-8 pt-4">
+          <button
+            onClick={handleConfirm}
+            disabled={!selected}
+            className="w-full font-bold py-4 rounded-2xl active:scale-95 transition-all font-body text-base"
+            style={selected
+              ? { background: PRIMARY_GRADIENT, color: 'white', boxShadow: '0 4px 14px rgba(124,92,255,0.28)' }
+              : { background: '#EDE0FF', color: '#9B8ED6', cursor: 'default' }
+            }
+          >
+            {selected ? `Use "${selected.name}" →` : 'Select a coloring page'}
+          </button>
+        </div>
+      </div>
 
       {!isSolo && (
         <LeaveRoomModal

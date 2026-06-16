@@ -11,7 +11,7 @@ export default function RoomStatusBar({ session, code }) {
       style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(6px)' }}
     >
       <span
-        className="font-bold tracking-[0.12em] text-blue-500/80 flex-shrink-0 text-[11px]"
+        className="font-bold tracking-[0.12em] text-[#7C5CFF]/80 flex-shrink-0 text-[11px]"
         style={{ fontFamily: "'Fredoka One', cursive" }}
       >
         {code}

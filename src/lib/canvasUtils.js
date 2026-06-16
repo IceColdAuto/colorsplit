@@ -10,6 +10,8 @@
  * Elke functie is een pure utility zonder side-effects op React state of Firebase.
  */
 
+import { normalizeSection } from './session'
+
 const CANVAS_SIZE = 800
 
 // ─── Smoothing ────────────────────────────────────────────────────────────────
@@ -51,10 +53,11 @@ export function buildAllowedMask(tearPoints, section, orientation = 'horizontal'
   const sc = tearPoints.map(p => ({ x: p.x * scale, y: p.y * scale }))
   const last = sc.length - 1
   const E = 2, W = CANVAS_SIZE, H = CANVAS_SIZE
+  const isZone0 = normalizeSection(section) === 'zone0'
   ctx.fillStyle = '#ffffff'
   ctx.beginPath()
   if (orientation === 'vertical') {
-    if (section === 'left') {
+    if (isZone0) {
       ctx.moveTo(-E, -E); ctx.lineTo(sc[0].x, -E)
       for (let i = 0; i <= last; i++) ctx.lineTo(sc[i].x, sc[i].y)
       ctx.lineTo(sc[last].x, H + E); ctx.lineTo(-E, H + E)
@@ -64,7 +67,7 @@ export function buildAllowedMask(tearPoints, section, orientation = 'horizontal'
       for (let i = last; i >= 0; i--) ctx.lineTo(sc[i].x, sc[i].y)
     }
   } else {
-    if (section === 'left') {
+    if (isZone0) {
       ctx.moveTo(-E, -E); ctx.lineTo(W + E, -E); ctx.lineTo(W + E, sc[last].y)
       for (let i = last; i >= 0; i--) ctx.lineTo(sc[i].x, sc[i].y)
       ctx.lineTo(-E, sc[0].y)
@@ -89,12 +92,13 @@ export function buildRevealMask(tearPoints, section, orientation = 'horizontal')
   const ctx = offscreen.getContext('2d')
   const scale = CANVAS_SIZE / 400
   const SEAM = 2
+  const isZone0 = normalizeSection(section) === 'zone0'
   let sc
   if (orientation === 'vertical') {
-    const dx = section === 'left' ? SEAM : -SEAM
+    const dx = isZone0 ? SEAM : -SEAM
     sc = tearPoints.map(p => ({ x: p.x * scale + dx, y: p.y * scale }))
   } else {
-    const dy = section === 'left' ? SEAM : -SEAM
+    const dy = isZone0 ? SEAM : -SEAM
     sc = tearPoints.map(p => ({ x: p.x * scale, y: p.y * scale + dy }))
   }
   const last = sc.length - 1
@@ -102,7 +106,7 @@ export function buildRevealMask(tearPoints, section, orientation = 'horizontal')
   ctx.fillStyle = '#ffffff'
   ctx.beginPath()
   if (orientation === 'vertical') {
-    if (section === 'left') {
+    if (isZone0) {
       ctx.moveTo(-E, -E); ctx.lineTo(sc[0].x, -E)
       for (let i = 0; i <= last; i++) ctx.lineTo(sc[i].x, sc[i].y)
       ctx.lineTo(sc[last].x, H + E); ctx.lineTo(-E, H + E)
@@ -112,7 +116,7 @@ export function buildRevealMask(tearPoints, section, orientation = 'horizontal')
       for (let i = last; i >= 0; i--) ctx.lineTo(sc[i].x, sc[i].y)
     }
   } else {
-    if (section === 'left') {
+    if (isZone0) {
       ctx.moveTo(-E, -E); ctx.lineTo(W + E, -E); ctx.lineTo(W + E, sc[last].y)
       for (let i = last; i >= 0; i--) ctx.lineTo(sc[i].x, sc[i].y)
       ctx.lineTo(-E, sc[0].y)
@@ -123,6 +127,68 @@ export function buildRevealMask(tearPoints, section, orientation = 'horizontal')
     }
   }
   ctx.closePath(); ctx.fill()
+  return offscreen
+}
+
+// ─── Polygon mask (future 3/4-player zones) ───────────────────────────────────
+
+/**
+ * Build an offscreen masking canvas from an explicit closed polygon.
+ * Intended for future session.zones support (zone0/zone1/zone2/zone3).
+ * Drop-in replacement for buildAllowedMask when session.zones is present.
+ *
+ * polygon: [{ x, y }, ...] in the same 0–400 coordinate space as tearPoints.
+ * Returns an 800×800 offscreen canvas — white pixels = allowed area.
+ * Returns an empty (transparent) canvas when polygon is missing or has < 3 points.
+ *
+ * Does not affect the current 2-player path. buildAllowedMask and buildRevealMask
+ * remain the authoritative masks until session.zones call-sites are wired.
+ */
+export function buildPolygonMask(polygon) {
+  const offscreen = document.createElement('canvas')
+  offscreen.width = CANVAS_SIZE
+  offscreen.height = CANVAS_SIZE
+  if (!polygon || polygon.length < 3) return offscreen // empty = no allowed area
+  const ctx = offscreen.getContext('2d')
+  const scale = CANVAS_SIZE / 400
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.moveTo(polygon[0].x * scale, polygon[0].y * scale)
+  for (let i = 1; i < polygon.length; i++) {
+    ctx.lineTo(polygon[i].x * scale, polygon[i].y * scale)
+  }
+  ctx.closePath()
+  ctx.fill()
+  return offscreen
+}
+
+/**
+ * Reveal-composite variant of buildPolygonMask.
+ * Fills the polygon then strokes its outline with lineWidth=4 (2px expansion per side)
+ * so adjacent zone masks overlap by ~4px, preventing anti-aliased boundary gaps
+ * when compositing multiple zones with source-over onto a white background.
+ * Use only in renderTearReveal — not for live coloring masks.
+ */
+export function buildRevealPolygonMask(polygon) {
+  const offscreen = document.createElement('canvas')
+  offscreen.width = CANVAS_SIZE
+  offscreen.height = CANVAS_SIZE
+  if (!polygon || polygon.length < 3) return offscreen
+  const ctx = offscreen.getContext('2d')
+  const scale = CANVAS_SIZE / 400
+  ctx.fillStyle = '#ffffff'
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = 4
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  ctx.moveTo(polygon[0].x * scale, polygon[0].y * scale)
+  for (let i = 1; i < polygon.length; i++) {
+    ctx.lineTo(polygon[i].x * scale, polygon[i].y * scale)
+  }
+  ctx.closePath()
+  ctx.fill()
+  ctx.stroke()
   return offscreen
 }
 

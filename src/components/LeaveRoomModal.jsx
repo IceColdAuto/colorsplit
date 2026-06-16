@@ -23,6 +23,7 @@ export default function LeaveRoomModal({
   onGoHome,
   title = 'Leave this room?',
   subtitle = 'You and the other player will stop playing together.',
+  confirmLabel = 'Leave room',
 }) {
   return (
     <>
@@ -96,7 +97,7 @@ export default function LeaveRoomModal({
                   onClick={onConfirm}
                   className="flex-1 bg-red-500 text-white font-bold py-4 rounded-2xl shadow-lifted font-body active:scale-95 transition-transform"
                 >
-                  Leave room
+                  {confirmLabel}
                 </button>
               </div>
             </motion.div>

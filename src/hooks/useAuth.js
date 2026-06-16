@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   subscribeToAuth,
   completeEmailLinkSignIn,
@@ -19,6 +19,9 @@ export default function useAuth() {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(isAuthAvailable())
+  const [profileLoading, setProfileLoading] = useState(false)
+
+  const callIdRef = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -36,23 +39,33 @@ export default function useAuth() {
     const unsubscribe = subscribeToAuth(async (u) => {
       await ready
       if (cancelled) return
+      // Stamp this auth event so any in-flight async from a prior event can detect it's stale.
+      const callId = ++callIdRef.current
       setUser(u)
+      setProfile(null)
       if (u) {
+        setProfileLoading(true)
         try {
           const p = await ensureUserProfile(u)
-          if (!cancelled) setProfile(p)
+          if (!cancelled && callIdRef.current === callId) {
+            setProfile(p)
+            setProfileLoading(false)
+          }
         } catch (e) {
           console.warn('Profile load failed:', e?.message)
-          if (!cancelled) setProfile(null)
+          if (!cancelled && callIdRef.current === callId) {
+            setProfile(null)
+            setProfileLoading(false)
+          }
         }
       } else {
-        setProfile(null)
+        setProfileLoading(false)
       }
-      if (!cancelled) setLoading(false)
+      if (!cancelled && callIdRef.current === callId) setLoading(false)
     })
 
     return () => { cancelled = true; unsubscribe() }
   }, [])
 
-  return { user, profile, loading, authAvailable: isAuthAvailable() }
+  return { user, profile, loading, profileLoading, authAvailable: isAuthAvailable() }
 }
