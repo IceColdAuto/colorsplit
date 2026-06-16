@@ -1243,14 +1243,14 @@ export default function ColoringSession() {
           <button
             onClick={() => setPanMode(v => !v)}
             className={`w-10 h-10 rounded-xl shadow-lg active:scale-90 transition-transform font-body text-lg leading-none flex items-center justify-center border ${
-              panMode ? 'bg-blue-500 text-white border-blue-400' : 'bg-gray-200 text-gray-700 border-gray-400/60'
+              panMode ? 'bg-blue-500 text-white border-blue-400' : 'bg-white/95 backdrop-blur-sm text-ink/70 border-white/60'
             }`}
             style={{ touchAction: 'manipulation' }}
             title="Move canvas"
           >✋</button>
           <button
             onClick={() => setZoom(z => Math.min(MAX_ZOOM, Math.round((z + 0.25) * 100) / 100))}
-            className="bg-gray-200 border border-gray-400/60 text-gray-700 font-bold w-10 h-10 rounded-xl shadow-lg active:scale-90 transition-transform font-body text-xl leading-none flex items-center justify-center"
+            className="bg-white/95 backdrop-blur-sm border border-white/60 text-ink/70 font-bold w-10 h-10 rounded-xl shadow-lg active:scale-90 transition-transform font-body text-xl leading-none flex items-center justify-center"
             style={{ touchAction: 'manipulation' }}
           >+</button>
           <button
@@ -1259,12 +1259,12 @@ export default function ColoringSession() {
               setZoom(newZ)
               if (newZ <= 1) setPan({ x: 0, y: 0 })
             }}
-            className="bg-gray-200 border border-gray-400/60 text-gray-700 font-bold w-10 h-10 rounded-xl shadow-lg active:scale-90 transition-transform font-body text-xl leading-none flex items-center justify-center"
+            className="bg-white/95 backdrop-blur-sm border border-white/60 text-ink/70 font-bold w-10 h-10 rounded-xl shadow-lg active:scale-90 transition-transform font-body text-xl leading-none flex items-center justify-center"
             style={{ touchAction: 'manipulation' }}
           >−</button>
           <button
             onClick={resetView}
-            className="bg-gray-200 border border-gray-400/60 text-gray-700 text-xs font-semibold w-10 h-10 rounded-xl shadow-lg active:scale-90 transition-transform font-body leading-none flex items-center justify-center"
+            className="bg-white/95 backdrop-blur-sm border border-white/60 text-ink/70 text-xs font-semibold w-10 h-10 rounded-xl shadow-lg active:scale-90 transition-transform font-body leading-none flex items-center justify-center"
             style={{ touchAction: 'manipulation' }}
           >Fit</button>
         </div>
