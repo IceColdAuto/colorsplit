@@ -462,7 +462,7 @@ export default function HomeScreen() {
                   {creating ? 'Creating room…' : 'Color Together'}
                 </div>
                 <div className="text-white/72 text-[13px] font-body font-medium">
-                  Create a shared coloring room
+                  Everyone colors a secret piece — reveal together.
                 </div>
               </div>
               {/* Chevron */}
