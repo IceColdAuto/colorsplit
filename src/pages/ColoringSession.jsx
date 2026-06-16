@@ -1133,7 +1133,7 @@ export default function ColoringSession() {
       <div
         ref={containerRef}
         className="flex-1 min-h-0 flex items-center justify-center overflow-hidden relative"
-        style={{ touchAction: 'none', zIndex: 1, isolation: 'isolate' }}
+        style={{ touchAction: 'none', zIndex: 1, isolation: 'isolate', background: 'radial-gradient(circle at center, #2a2a2a 0%, #1f1f1f 45%, #151515 100%)' }}
       >
         {/* Partner status banners — absolute overlay, never affects canvas layout */}
         <div className="absolute top-0 left-0 right-0 z-30 pointer-events-none flex flex-col gap-1 p-2">
