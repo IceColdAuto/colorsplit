@@ -1062,7 +1062,7 @@ export default function ColoringSession() {
               <img
                 src="/icons/colorsplit-icon-mini.png"
                 alt="ColorSplit"
-                className="w-6 h-6 select-none"
+                className="w-10 h-10 select-none"
                 draggable="false"
               />
             )}
@@ -1088,14 +1088,14 @@ export default function ColoringSession() {
             truncated away). Row 3 (multiplayer): per-player breakdown. */}
         <div className="flex items-center flex-1 justify-center min-w-0 px-1.5">
           <div
-            className="flex flex-col items-center gap-0.5 min-w-0 w-full max-w-[240px] bg-white rounded-2xl px-3 py-1.5 border border-ink/8"
-            style={{ boxShadow: '0 2px 8px rgba(45,36,22,0.10)' }}
+            className="flex flex-col items-center gap-1 min-w-0 w-full max-w-[240px] bg-white rounded-2xl px-4 py-2 border border-ink/10"
+            style={{ boxShadow: '0 4px 12px rgba(45,36,22,0.14)' }}
           >
             <div className="flex items-center gap-2 w-full">
-              <div className="flex-1 h-[7px] bg-blue-100 rounded-full overflow-hidden">
+              <div className="flex-1 h-[8px] bg-blue-100 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                  style={{ width: `${combinedProgress}%` }}
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${combinedProgress}%`, background: 'linear-gradient(90deg, #8b5cf6 0%, #3b82f6 100%)' }}
                 />
               </div>
               <span className="text-[13px] font-bold font-body text-ink flex-shrink-0 leading-none">
@@ -1103,7 +1103,7 @@ export default function ColoringSession() {
               </span>
             </div>
             {/* Fun phrase — the star, full contrast, always visible */}
-            <span className="text-[11px] font-bold font-body text-blue-600 truncate w-full text-center leading-tight">
+            <span className="text-[12px] font-bold font-body text-violet-600 truncate w-full text-center leading-tight">
               {progressPhrase(combinedProgress, isSolo)}
             </span>
             {/* Per-player breakdown (multiplayer only) */}
@@ -1117,8 +1117,8 @@ export default function ColoringSession() {
         <button
           onClick={() => setShowDoneConfirm(true)}
           disabled={isDone}
-          style={{ touchAction: 'manipulation', flexShrink: 0 }}
-          className="bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-xl active:scale-95 transition-all disabled:opacity-40 font-body"
+          style={{ touchAction: 'manipulation', flexShrink: 0, background: 'linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%)' }}
+          className="text-white text-sm font-semibold px-4 py-2 rounded-xl active:scale-95 transition-all disabled:opacity-40 font-body"
         >
           {isDone ? 'Done ✓' : 'Done'}
         </button>
