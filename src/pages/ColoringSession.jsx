@@ -1177,6 +1177,7 @@ export default function ColoringSession() {
             height: containerSize,
             flexShrink: 0,
             clipPath: pieceClipPath, // piece-only view: hides the other player's section visually
+            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.45)',
           }}
         >
           <div className="absolute inset-0 bg-white" style={{ zIndex: 0 }} />
