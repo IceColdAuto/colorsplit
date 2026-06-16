@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -6,7 +6,7 @@ import {
   getActiveRoom, clearActiveRoom, getSession,
 } from '../lib/session'
 import { DEMO_MODE } from '../lib/firebase'
-import { getProfile, isProfileComplete } from '../lib/profile'
+import { getProfile, isProfileComplete, getCachedAccountProfile, saveCachedAccountProfile } from '../lib/profile'
 import ProfileSetup from '../components/ProfileSetup'
 import ProfileButton from '../components/ProfileButton'
 import AuthModal from '../components/AuthModal'
@@ -26,10 +26,14 @@ export default function HomeScreen() {
   const [joinError, setJoinError] = useState('')
   const [joining, setJoining] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [profile, setProfile] = useState(null)
+  const [createError, setCreateError] = useState('')
+  const [soloCreating, setSoloCreating] = useState(false)
+  const [soloError, setSoloError] = useState('')
+  const [profile, setProfile] = useState({ avatarId: 'cat', colorId: 'peach', username: '' })
   const [showProfileSetup, setShowProfileSetup] = useState(false)
   const [resumeRoom, setResumeRoom] = useState(null)
-  const { user, authAvailable } = useAuth()
+  const { user, profile: cloudProfile, authAvailable, loading: authLoading, profileLoading } = useAuth()
+  const hadUser = useRef(false)
   const [showAuth, setShowAuth] = useState(false)
   const [invites, setInvites] = useState([])
   const [inviteBusy, setInviteBusy] = useState(null) // invite id being joined
@@ -104,32 +108,83 @@ export default function HomeScreen() {
     navigate(`/session/${resumeRoom.code}/${routeByStatus[resumeRoom.status] || 'lobby'}`)
   }
 
+  // Guest: load from guest localStorage. Logged-in: use uid-specific cache while cloud loads.
   useEffect(() => {
-    const p = getProfile()
-    if (p) {
-      setProfile(p)
+    if (authLoading) return
+    if (user) {
+      const cached = getCachedAccountProfile(user.uid)
+      setProfile(cached || { avatarId: 'cat', colorId: 'peach', username: '' })
     } else {
-      // slight delay so the home screen animates in first
-      const t = setTimeout(() => setShowProfileSetup(true), 600)
-      return () => clearTimeout(t)
+      const p = getProfile()
+      setProfile(p || { avatarId: 'cat', colorId: 'peach', username: '' })
     }
-  }, [])
+  }, [user, authLoading])
 
-  // Reset local profile state on sign-out so the previous account's
-  // name/avatar/color never bleeds into the next guest or user session.
-  // Use a default guest object (not null) so ProfileButton stays visible.
+  // Auth-aware ProfileSetup trigger — waits for Firebase before deciding.
   useEffect(() => {
-    if (!user) setProfile({ avatarId: 'cat', colorId: 'peach', username: '' })
-  }, [user])
+    if (authLoading) return
+    if (user) {
+      hadUser.current = true
+      // Google/Apple populate user.displayName immediately; cloud profile may
+      // arrive slightly later via ensureUserProfile. Either is good enough.
+      const hasName = cloudProfile?.displayName || user.displayName
+      if (!hasName) setShowProfileSetup(true)
+      return
+    }
+    // Guest path: only on initial page load, not after a mid-session sign-out.
+    if (hadUser.current) return
+    const p = getProfile()
+    if (p?.username?.trim()) return
+    const t = setTimeout(() => setShowProfileSetup(true), 600)
+    return () => clearTimeout(t)
+  }, [authLoading, user, cloudProfile])
+
+  // If ProfileSetup opened before cloud profile arrived, close it once name is known.
+  useEffect(() => {
+    if (!showProfileSetup || !user) return
+    const hasName = cloudProfile?.displayName || user.displayName
+    if (hasName) setShowProfileSetup(false)
+  }, [cloudProfile, user, showProfileSetup])
+
+  // Cloud profile is the source of truth for signed-in display; persist to uid-specific cache.
+  // Cloud wins when non-blank; existing uid cache fills any missing/blank cloud fields.
+  useEffect(() => {
+    if (!user || !cloudProfile) return
+    const existing = getCachedAccountProfile(user.uid)
+    const mapped = {
+      username: cloudProfile.displayName || existing?.username || '',
+      avatarId: cloudProfile.avatarId || existing?.avatarId || 'cat',
+      colorId: cloudProfile.colorId || existing?.colorId || 'peach',
+    }
+    saveCachedAccountProfile(user.uid, mapped)
+    setProfile(mapped)
+  }, [user, cloudProfile])
 
   // ─── Handlers (unchanged) ────────────────────────────────────────────────
   async function handleCreate() {
     setCreating(true)
-    const playerId = getOrCreatePlayerId()
-    const playerName = getOrCreatePlayerName()
-    const p = getProfile()
-    const code = await createSession(playerId, playerName, false, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null)
-    navigate(`/session/${code}/lobby`)
+    setCreateError('')
+    if (!navigator.onLine) {
+      setCreateError("You're offline — check your connection and try again.")
+      setCreating(false)
+      return
+    }
+    try {
+      const playerId = getOrCreatePlayerId()
+      const playerName = getOrCreatePlayerName()
+      const p = getProfile()
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Taking too long — check your connection and try again.')), 9000)
+      )
+      const code = await Promise.race([
+        createSession(playerId, playerName, false, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null),
+        timeout,
+      ])
+      navigate(`/session/${code}/lobby`)
+    } catch (e) {
+      setCreateError(e.message || 'Could not create room')
+      setCreating(false)
+    }
   }
 
   async function handleJoin() {
@@ -150,11 +205,29 @@ export default function HomeScreen() {
   }
 
   async function handleSolo() {
-    const playerId = getOrCreatePlayerId()
-    const playerName = getOrCreatePlayerName()
-    const p = getProfile()
-    const code = await createSession(playerId, playerName, true, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null)
-    navigate(`/session/${code}/pick`)
+    setSoloCreating(true)
+    setSoloError('')
+    if (!navigator.onLine) {
+      setSoloError("You're offline — check your connection and try again.")
+      setSoloCreating(false)
+      return
+    }
+    try {
+      const playerId = getOrCreatePlayerId()
+      const playerName = getOrCreatePlayerName()
+      const p = getProfile()
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Taking too long — check your connection and try again.')), 9000)
+      )
+      const code = await Promise.race([
+        createSession(playerId, playerName, true, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null),
+        timeout,
+      ])
+      navigate(`/session/${code}/pick`)
+    } catch (e) {
+      setSoloError(e.message || 'Could not start solo session')
+      setSoloCreating(false)
+    }
   }
 
   return (
@@ -399,6 +472,20 @@ export default function HomeScreen() {
             </div>
           </motion.button>
 
+          {/* Color Together error */}
+          <AnimatePresence>
+            {createError && (
+              <motion.p
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="text-red-500 text-[13px] font-body text-center"
+              >
+                {createError}
+              </motion.p>
+            )}
+          </AnimatePresence>
+
           {/* Join with code */}
           <motion.div
             className="bg-white rounded-[24px] border p-4"
@@ -465,7 +552,8 @@ export default function HomeScreen() {
             {/* Play Solo */}
             <button
               onClick={handleSolo}
-              className="bg-white rounded-[22px] p-4 text-left active:scale-95 transition-transform border"
+              disabled={soloCreating}
+              className="bg-white rounded-[22px] p-4 text-left active:scale-95 transition-transform border disabled:opacity-60"
               style={{
                 borderColor: 'rgba(45,36,22,0.06)',
                 boxShadow: '0 2px 14px rgba(45,36,22,0.07), 0 0 0 1px rgba(45,36,22,0.04)',
@@ -527,6 +615,20 @@ export default function HomeScreen() {
               <div className="text-ink/40 text-[12px] font-body leading-tight">View your saved artworks</div>
             </button>
           </motion.div>
+
+          {/* Solo error */}
+          <AnimatePresence>
+            {soloError && (
+              <motion.p
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="text-red-500 text-[13px] font-body text-center"
+              >
+                {soloError}
+              </motion.p>
+            )}
+          </AnimatePresence>
 
           {/* Logged-out auth entry — returning users need a visible "log in" */}
           {authAvailable && !user && (
