@@ -313,8 +313,6 @@ export default function RevealScreen() {
           const all = await getAllStrokes(code)
           if (isTear) {
             setAllStrokesData(all)
-            // Pre-render the final composite in the background.
-            // It finishes long before MaskedTearReplay completes (canvas ops ~100ms).
             // colorPage from useMemo may be null on first render if sessionData
             // state hasn't updated yet (setSessionData is async). Fall back to
             // the live subscription payload so the line art is never skipped.
@@ -322,16 +320,26 @@ export default function RevealScreen() {
               ?? (data?.coloringPage?.id && data.coloringPage.id !== 'upload'
                 ? getPageById(data.coloringPage.id)
                 : null)
-            renderSnapshotReveal(data, resolvedColorPage)
-              .then(dataUrl => dataUrl
-                ? setCapturedUrl(dataUrl)
-                : renderTearReveal(all, data, resolvedColorPage)
-                    .then(fbDataUrl => { if (fbDataUrl) setCapturedUrl(fbDataUrl) })
-                    .catch(() => {})
-              )
-              .catch(() => {})
-            // Show drawing evolution first — same as solo timelapse
-            setPhase('masked-replay')
+            // Await snapshot composite before deciding which phase to show.
+            // If it succeeds we skip the broken stroke animation entirely.
+            const snapshotUrl = await renderSnapshotReveal(data, resolvedColorPage)
+            if (snapshotUrl) {
+              setCapturedUrl(snapshotUrl)
+              // Skip masked-replay — go straight to slide (or reveal for zones).
+              const hasTearLine = (data.tearLine?.points?.length || 0) > 0 && !data.zones
+              if (hasTearLine) {
+                setPhase('slide')
+                setTimeout(() => setPhase('reveal'), 4500)
+              } else {
+                setPhase('reveal')
+              }
+            } else {
+              // Snapshot unavailable — render strokes in background then show replay.
+              renderTearReveal(all, data, resolvedColorPage)
+                .then(fbDataUrl => { if (fbDataUrl) setCapturedUrl(fbDataUrl) })
+                .catch(() => {})
+              setPhase('masked-replay')
+            }
           } else {
             // Solo / together mode: use the live canvas snapshot if available,
             // then run the timelapse for animation only.
