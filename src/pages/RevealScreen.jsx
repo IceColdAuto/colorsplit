@@ -133,13 +133,16 @@ async function renderTearReveal(allStrokes, sessionData, colorPage) {
  * Returns a PNG data URL, or null if any active player is missing a snapshot URL
  * or if any load/draw/encode step fails (caller should fall back to renderTearReveal).
  */
-async function renderSnapshotReveal(sessionData, colorPage) {
+async function renderSnapshotReveal(sessionData, colorPage, onDebug = () => {}) {
   try {
     const activePlayers = Object.entries(sessionData.players || {})
       .filter(([, p]) => p.name && !p.left && p.assignedSection)
 
     if (activePlayers.length === 0) return null
-    if (activePlayers.some(([, p]) => !p.canvasSnapshotUrl)) return null
+    if (activePlayers.some(([, p]) => !p.canvasSnapshotUrl)) {
+      onDebug('snapshot-missing-url')
+      return null
+    }
 
     const loaded = await Promise.all(
       activePlayers.map(([pid, playerData]) => new Promise((resolve, reject) => {
@@ -196,6 +199,7 @@ async function renderSnapshotReveal(sessionData, colorPage) {
 
     return final.toDataURL('image/png')
   } catch (err) {
+    onDebug('snapshot-error')
     console.warn('[ColorSplit] renderSnapshotReveal failed — falling back to stroke reconstruction:', err?.message)
     return null
   }
@@ -222,6 +226,7 @@ export default function RevealScreen() {
   const [saveResult, setSaveResult] = useState(null) // null | 'saved' | 'failed'
   const [videoState, setVideoState] = useState('idle') // idle | rendering | shared | downloaded | error
   const [videoProgress, setVideoProgress] = useState(0)
+  const [revealDebugPath, setRevealDebugPath] = useState('—')
   const { user } = useAuth()
   const [showAuthPrompt, setShowAuthPrompt] = useState(false)
   const [soloStarting, setSoloStarting] = useState(false)
@@ -319,8 +324,10 @@ export default function RevealScreen() {
                 : null)
             // Await snapshot composite before deciding which phase to show.
             // If it succeeds we skip the broken stroke animation entirely.
-            const snapshotUrl = await renderSnapshotReveal(data, resolvedColorPage)
+            setRevealDebugPath('snapshot-start')
+            const snapshotUrl = await renderSnapshotReveal(data, resolvedColorPage, setRevealDebugPath)
             if (snapshotUrl) {
+              setRevealDebugPath('snapshot-success')
               setCapturedUrl(snapshotUrl)
               // Skip masked-replay — go straight to slide (or reveal for zones).
               const hasTearLine = (data.tearLine?.points?.length || 0) > 0 && !data.zones
@@ -332,9 +339,11 @@ export default function RevealScreen() {
               }
             } else {
               // Snapshot unavailable — render strokes in background then show replay.
+              setRevealDebugPath('stroke-fallback')
               renderTearReveal(all, data, resolvedColorPage)
                 .then(fbDataUrl => { if (fbDataUrl) setCapturedUrl(fbDataUrl) })
                 .catch(() => {})
+              setRevealDebugPath('masked-replay')
               setPhase('masked-replay')
             }
           } else {
@@ -1185,6 +1194,26 @@ export default function RevealScreen() {
           />
         )}
       </AnimatePresence>
+
+      {/* ── TEMP DEBUG BADGE — remove before release ──────────────────────── */}
+      {isTearMode && (() => {
+        const activePlayers = Object.entries(sessionData?.players || {})
+          .filter(([, p]) => p.name && !p.left && p.assignedSection)
+        const withUrl = activePlayers.filter(([, p]) => p.canvasSnapshotUrl)
+        return (
+          <div style={{
+            position: 'fixed', top: 8, left: 8, zIndex: 9999,
+            background: 'rgba(0,0,0,0.82)', color: '#0f0', fontFamily: 'monospace',
+            fontSize: 11, padding: '5px 8px', borderRadius: 6, lineHeight: 1.6,
+            pointerEvents: 'none', maxWidth: 'calc(100vw - 16px)',
+          }}>
+            <div>path: <b>{revealDebugPath}</b></div>
+            <div>phase: <b>{phase}</b></div>
+            <div>captured: <b>{capturedUrl ? 'yes' : 'no'}</b></div>
+            <div>urls: <b>{withUrl.length}/{activePlayers.length}</b></div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
