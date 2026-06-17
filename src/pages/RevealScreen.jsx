@@ -125,6 +125,99 @@ async function renderTearReveal(allStrokes, sessionData, colorPage) {
 
   return final.toDataURL('image/png')
 }
+
+/**
+ * Render the Color Together final image using uploaded player canvas snapshots.
+ * Each player's canvasSnapshotUrl is clipped to their assigned zone and composited.
+ * Line art is drawn on top exactly as in renderTearReveal.
+ * Returns a PNG data URL, or null if any active player is missing a snapshot URL
+ * or if any load/draw/encode step fails (caller should fall back to renderTearReveal).
+ */
+async function renderSnapshotReveal(sessionData, colorPage) {
+  try {
+    const tearPoints = sessionData?.tearLine?.points
+    const orientation = sessionData?.tearLine?.orientation ?? 'horizontal'
+    if (!tearPoints?.length && !sessionData?.zones) return null
+
+    const activePlayers = Object.entries(sessionData.players || {})
+      .filter(([, p]) => p.name && !p.left && p.assignedSection)
+
+    if (activePlayers.length === 0) return null
+    if (activePlayers.some(([, p]) => !p.canvasSnapshotUrl)) return null
+
+    // Load all snapshots in parallel — reject on any error so fallback triggers
+    const loaded = await Promise.all(
+      activePlayers.map(([pid, playerData]) => new Promise((resolve, reject) => {
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        img.onload = () => resolve({ img, section: playerData.assignedSection })
+        img.onerror = () => reject(new Error(`Snapshot load failed for player ${pid}`))
+        img.src = playerData.canvasSnapshotUrl
+      }))
+    )
+
+    const final = document.createElement('canvas')
+    final.width = CANVAS_SIZE
+    final.height = CANVAS_SIZE
+    const finalCtx = final.getContext('2d')
+    finalCtx.fillStyle = '#ffffff'
+    finalCtx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
+
+    for (const { img, section } of loaded) {
+      const piece = document.createElement('canvas')
+      piece.width = CANVAS_SIZE
+      piece.height = CANVAS_SIZE
+      const pieceCtx = piece.getContext('2d')
+      pieceCtx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE)
+
+      const mask = sessionData?.zones?.[section]?.polygon
+        ? buildRevealPolygonMask(sessionData.zones[section].polygon)
+        : buildRevealMask(tearPoints, section, orientation)
+      pieceCtx.save()
+      pieceCtx.globalCompositeOperation = 'destination-in'
+      pieceCtx.drawImage(mask, 0, 0)
+      pieceCtx.restore()
+
+      finalCtx.drawImage(piece, 0, 0)
+    }
+
+    // Draw line art on top — identical to renderTearReveal
+    await new Promise(resolve => {
+      if (!colorPage) { resolve(); return }
+      const img = new Image()
+      img.onload = () => {
+        finalCtx.save()
+        finalCtx.globalCompositeOperation = 'multiply'
+        finalCtx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE)
+        finalCtx.restore()
+        resolve()
+      }
+      img.onerror = () => resolve()
+      if (colorPage.svgContent) {
+        const blob = new Blob([colorPage.svgContent], { type: 'image/svg+xml' })
+        const url = URL.createObjectURL(blob)
+        img.onload = () => {
+          finalCtx.save()
+          finalCtx.globalCompositeOperation = 'multiply'
+          finalCtx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE)
+          finalCtx.restore()
+          URL.revokeObjectURL(url)
+          resolve()
+        }
+        img.src = url
+      } else if (colorPage.uploadDataUrl || colorPage.imageUrl) {
+        img.src = colorPage.uploadDataUrl || colorPage.imageUrl
+      } else {
+        resolve()
+      }
+    })
+
+    return final.toDataURL('image/png')
+  } catch (err) {
+    console.warn('[ColorSplit] renderSnapshotReveal failed — falling back to stroke reconstruction:', err?.message)
+    return null
+  }
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function RevealScreen() {
@@ -244,8 +337,13 @@ export default function RevealScreen() {
               ?? (data?.coloringPage?.id && data.coloringPage.id !== 'upload'
                 ? getPageById(data.coloringPage.id)
                 : null)
-            renderTearReveal(all, data, resolvedColorPage)
-              .then(dataUrl => { if (dataUrl) setCapturedUrl(dataUrl) })
+            renderSnapshotReveal(data, resolvedColorPage)
+              .then(dataUrl => dataUrl
+                ? setCapturedUrl(dataUrl)
+                : renderTearReveal(all, data, resolvedColorPage)
+                    .then(fbDataUrl => { if (fbDataUrl) setCapturedUrl(fbDataUrl) })
+                    .catch(() => {})
+              )
               .catch(() => {})
             // Show drawing evolution first — same as solo timelapse
             setPhase('masked-replay')
