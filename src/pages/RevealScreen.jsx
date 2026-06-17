@@ -421,7 +421,8 @@ export default function RevealScreen() {
       || sessionData?.coloringPage?.id
       || loadGallery().find(a => a.code === code)?.pageId
       || ''
-    const completedAt = Date.now()
+    const doneAt = sessionData.players?.[playerId]?.doneAt
+    const completedAt = doneAt || Date.now()
     const { ok, entry } = saveArtwork({
       id: `${code}_${completedAt}`,
       code,

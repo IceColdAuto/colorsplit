@@ -265,7 +265,7 @@ export async function setPlayerReady(code, playerId, ready) {
 
 export async function setPlayerDone(code, playerId, done) {
   if (DEMO_MODE) { memSet(`sessions/${code}/players/${playerId}/done`, done); return }
-  await update(ref(db, `sessions/${code}/players/${playerId}`), { done })
+  await update(ref(db, `sessions/${code}/players/${playerId}`), { done, doneAt: done ? Date.now() : null })
 }
 
 export async function setPlayerWantsAgain(code, playerId, wantsAgain) {
