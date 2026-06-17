@@ -250,7 +250,10 @@ export default function RevealScreen() {
             // Show drawing evolution first — same as solo timelapse
             setPhase('masked-replay')
           } else {
-            // Solo / together mode: keep existing timelapse behavior
+            // Solo / together mode: use the live canvas snapshot if available,
+            // then run the timelapse for animation only.
+            const snapshot = sessionStorage.getItem(`colorsplit_canvas_${code}_latest`)
+            if (snapshot) { setCapturedUrl(snapshot); snapshotLoadedRef.current = true }
             setStrokes(flattenStrokes(all))
             setPhase('timelapse')
           }
@@ -273,7 +276,11 @@ export default function RevealScreen() {
   }, [phase, capturedUrl, gallerySaved, sessionData])
 
 
+  const snapshotLoadedRef = useRef(false)
+
   function handleCapture(dataUrl) {
+    // Don't let the timelapse replay overwrite a snapshot already set from sessionStorage.
+    if (snapshotLoadedRef.current) return
     setCapturedUrl(dataUrl)
   }
 
