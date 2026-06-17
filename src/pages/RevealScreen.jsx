@@ -136,7 +136,6 @@ async function renderTearReveal(allStrokes, sessionData, colorPage) {
 async function renderSnapshotReveal(sessionData, colorPage) {
   try {
     const tearPoints = sessionData?.tearLine?.points
-    const orientation = sessionData?.tearLine?.orientation ?? 'horizontal'
     if (!tearPoints?.length && !sessionData?.zones) return null
 
     const activePlayers = Object.entries(sessionData.players || {})
@@ -150,7 +149,7 @@ async function renderSnapshotReveal(sessionData, colorPage) {
       activePlayers.map(([pid, playerData]) => new Promise((resolve, reject) => {
         const img = new Image()
         img.crossOrigin = 'anonymous'
-        img.onload = () => resolve({ img, section: playerData.assignedSection })
+        img.onload = () => resolve(img)
         img.onerror = () => reject(new Error(`Snapshot load failed for player ${pid}`))
         img.src = playerData.canvasSnapshotUrl
       }))
@@ -163,22 +162,8 @@ async function renderSnapshotReveal(sessionData, colorPage) {
     finalCtx.fillStyle = '#ffffff'
     finalCtx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
 
-    for (const { img, section } of loaded) {
-      const piece = document.createElement('canvas')
-      piece.width = CANVAS_SIZE
-      piece.height = CANVAS_SIZE
-      const pieceCtx = piece.getContext('2d')
-      pieceCtx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE)
-
-      const mask = sessionData?.zones?.[section]?.polygon
-        ? buildRevealPolygonMask(sessionData.zones[section].polygon)
-        : buildRevealMask(tearPoints, section, orientation)
-      pieceCtx.save()
-      pieceCtx.globalCompositeOperation = 'destination-in'
-      pieceCtx.drawImage(mask, 0, 0)
-      pieceCtx.restore()
-
-      finalCtx.drawImage(piece, 0, 0)
+    for (const img of loaded) {
+      finalCtx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE)
     }
 
     // Draw line art on top — identical to renderTearReveal
