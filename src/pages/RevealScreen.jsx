@@ -127,68 +127,20 @@ async function renderTearReveal(allStrokes, sessionData, colorPage) {
 }
 
 /**
- * Dilate colored pixels outward by R pixels to close hairline transparent gaps
- * at zone boundaries. Reads from the original pixel buffer so fills don't cascade.
- * Returns a new canvas with the dilated result.
- */
-function dilateSnapshotLayer(img) {
-  const c = document.createElement('canvas')
-  c.width = CANVAS_SIZE
-  c.height = CANVAS_SIZE
-  const ctx = c.getContext('2d')
-  ctx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE)
-
-  const src = ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE)
-  const data = src.data
-  const out = new Uint8ClampedArray(data)
-  const W = CANVAS_SIZE
-  const R = 3
-
-  for (let y = 0; y < W; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = (y * W + x) * 4
-      if (data[i + 3] >= 128) continue  // already opaque — skip
-      let r = 0, g = 0, b = 0, n = 0
-      for (let dy = -R; dy <= R; dy++) {
-        const ny = y + dy
-        if (ny < 0 || ny >= W) continue
-        for (let dx = -R; dx <= R; dx++) {
-          const nx = x + dx
-          if (nx < 0 || nx >= W) continue
-          const ni = (ny * W + nx) * 4
-          if (data[ni + 3] >= 128) { r += data[ni]; g += data[ni + 1]; b += data[ni + 2]; n++ }
-        }
-      }
-      if (n > 0) {
-        out[i] = Math.round(r / n); out[i + 1] = Math.round(g / n)
-        out[i + 2] = Math.round(b / n); out[i + 3] = 255
-      }
-    }
-  }
-
-  ctx.putImageData(new ImageData(out, W, W), 0, 0)
-  return c
-}
-
-/**
- * Render the Color Together final image using uploaded player canvas snapshots.
- * Each player's canvasSnapshotUrl is clipped to their assigned zone and composited.
- * Line art is drawn on top exactly as in renderTearReveal.
+ * Render the Color Together final image by compositing Firebase PNG snapshots
+ * exactly as-is, then drawing line art once on top. No masking, clipping,
+ * dilation, or pixel manipulation — pure drawImage compositor.
  * Returns a PNG data URL, or null if any active player is missing a snapshot URL
  * or if any load/draw/encode step fails (caller should fall back to renderTearReveal).
  */
 async function renderSnapshotReveal(sessionData, colorPage) {
   try {
-    const tearPoints = sessionData?.tearLine?.points
-    if (!tearPoints?.length && !sessionData?.zones) return null
-
     const activePlayers = Object.entries(sessionData.players || {})
       .filter(([, p]) => p.name && !p.left && p.assignedSection)
 
     if (activePlayers.length === 0) return null
     if (activePlayers.some(([, p]) => !p.canvasSnapshotUrl)) return null
 
-    // Load all snapshots in parallel — reject on any error so fallback triggers
     const loaded = await Promise.all(
       activePlayers.map(([pid, playerData]) => new Promise((resolve, reject) => {
         const img = new Image()
@@ -207,10 +159,11 @@ async function renderSnapshotReveal(sessionData, colorPage) {
     finalCtx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
 
     for (const img of loaded) {
-      finalCtx.drawImage(dilateSnapshotLayer(img), 0, 0, CANVAS_SIZE, CANVAS_SIZE)
+      finalCtx.globalCompositeOperation = 'source-over'
+      finalCtx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE)
     }
 
-    // Draw line art on top — identical to renderTearReveal
+    // Draw line art on top
     await new Promise(resolve => {
       if (!colorPage) { resolve(); return }
       const img = new Image()
