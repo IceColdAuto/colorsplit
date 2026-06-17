@@ -960,8 +960,8 @@ export default function ColoringSession() {
     saveCanvasForReveal()
     setIsDone(true)
     setShowDoneConfirm(false)
-    // Color Together only: upload real color canvas snapshot to Firebase Storage.
-    if (session?.settings?.mode === 'tear') {
+    // Upload color canvas snapshot to Firebase Storage for reveal fallback (solo + Color Together).
+    if (session?.settings?.mode === 'tear' || session?.settings?.mode === 'solo') {
       try {
         const dataUrl = captureColorSnapshot()
         if (dataUrl) {

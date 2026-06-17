@@ -277,10 +277,29 @@ export default function RevealScreen() {
           setCombinedUrl(snapshot)
           setShowConfetti(true)
           setPhase('reveal')
-        } else {
-          setError('Artwork snapshot not found. Go back and finish your coloring session.')
-          setPhase('error')
+          return
         }
+        // Fallback: solo snapshot uploaded to Firebase Storage at Done time
+        const firebaseUrl = data.players?.[playerId]?.canvasSnapshotUrl
+        if (firebaseUrl) {
+          const resolvedColorPage = colorPage
+            ?? (data?.coloringPage?.id && data.coloringPage.id !== 'upload'
+              ? getPageById(data.coloringPage.id)
+              : null)
+          buildColorTogetherImage([{ canvasSnapshotUrl: firebaseUrl }], resolvedColorPage)
+            .then(url => {
+              setCombinedUrl(url)
+              setShowConfetti(true)
+              setPhase('reveal')
+            })
+            .catch(() => {
+              setError('Artwork snapshot not found. Go back and finish your coloring session.')
+              setPhase('error')
+            })
+          return
+        }
+        setError('Artwork snapshot not found. Go back and finish your coloring session.')
+        setPhase('error')
         return
       }
 
