@@ -125,85 +125,6 @@ async function renderTearReveal(allStrokes, sessionData, colorPage) {
 
   return final.toDataURL('image/png')
 }
-
-/**
- * Render the Color Together final image by compositing Firebase PNG snapshots
- * exactly as-is, then drawing line art once on top. No masking, clipping,
- * dilation, or pixel manipulation — pure drawImage compositor.
- * Returns a PNG data URL, or null if any active player is missing a snapshot URL
- * or if any load/draw/encode step fails (caller should fall back to renderTearReveal).
- */
-async function renderSnapshotReveal(sessionData, colorPage, onDebug = () => {}) {
-  try {
-    const activePlayers = Object.entries(sessionData.players || {})
-      .filter(([, p]) => p.name && !p.left && p.assignedSection)
-
-    if (activePlayers.length === 0) return null
-    if (activePlayers.some(([, p]) => !p.canvasSnapshotUrl)) {
-      onDebug('snapshot-missing-url')
-      return null
-    }
-
-    const loaded = await Promise.all(
-      activePlayers.map(([pid, playerData]) => new Promise((resolve, reject) => {
-        const img = new Image()
-        img.crossOrigin = 'anonymous'
-        img.onload = () => resolve(img)
-        img.onerror = () => reject(new Error(`Snapshot load failed for player ${pid}`))
-        img.src = playerData.canvasSnapshotUrl
-      }))
-    )
-
-    const final = document.createElement('canvas')
-    final.width = CANVAS_SIZE
-    final.height = CANVAS_SIZE
-    const finalCtx = final.getContext('2d')
-    finalCtx.fillStyle = '#ffffff'
-    finalCtx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
-
-    for (const img of loaded) {
-      finalCtx.globalCompositeOperation = 'source-over'
-      finalCtx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE)
-    }
-
-    // Draw line art on top
-    await new Promise(resolve => {
-      if (!colorPage) { resolve(); return }
-      const img = new Image()
-      img.onload = () => {
-        finalCtx.save()
-        finalCtx.globalCompositeOperation = 'multiply'
-        finalCtx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE)
-        finalCtx.restore()
-        resolve()
-      }
-      img.onerror = () => resolve()
-      if (colorPage.svgContent) {
-        const blob = new Blob([colorPage.svgContent], { type: 'image/svg+xml' })
-        const url = URL.createObjectURL(blob)
-        img.onload = () => {
-          finalCtx.save()
-          finalCtx.globalCompositeOperation = 'multiply'
-          finalCtx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE)
-          finalCtx.restore()
-          URL.revokeObjectURL(url)
-          resolve()
-        }
-        img.src = url
-      } else if (colorPage.uploadDataUrl || colorPage.imageUrl) {
-        img.src = colorPage.uploadDataUrl || colorPage.imageUrl
-      } else {
-        resolve()
-      }
-    })
-
-    return final.toDataURL('image/png')
-  } catch (err) {
-    onDebug('snapshot-error')
-    console.warn('[ColorSplit] renderSnapshotReveal failed — falling back to stroke reconstruction:', err?.message)
-    return null
-  }
-}
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function RevealScreen() {
@@ -226,7 +147,6 @@ export default function RevealScreen() {
   const [saveResult, setSaveResult] = useState(null) // null | 'saved' | 'failed'
   const [videoState, setVideoState] = useState('idle') // idle | rendering | shared | downloaded | error
   const [videoProgress, setVideoProgress] = useState(0)
-  const [revealDebugPath, setRevealDebugPath] = useState('—')
   const { user } = useAuth()
   const [showAuthPrompt, setShowAuthPrompt] = useState(false)
   const [soloStarting, setSoloStarting] = useState(false)
@@ -315,6 +235,8 @@ export default function RevealScreen() {
           const all = await getAllStrokes(code)
           if (isTear) {
             setAllStrokesData(all)
+            // Pre-render the final composite in the background.
+            // It finishes long before MaskedTearReplay completes (canvas ops ~100ms).
             // colorPage from useMemo may be null on first render if sessionData
             // state hasn't updated yet (setSessionData is async). Fall back to
             // the live subscription payload so the line art is never skipped.
@@ -322,30 +244,11 @@ export default function RevealScreen() {
               ?? (data?.coloringPage?.id && data.coloringPage.id !== 'upload'
                 ? getPageById(data.coloringPage.id)
                 : null)
-            // Await snapshot composite before deciding which phase to show.
-            // If it succeeds we skip the broken stroke animation entirely.
-            setRevealDebugPath('snapshot-start')
-            const snapshotUrl = await renderSnapshotReveal(data, resolvedColorPage, setRevealDebugPath)
-            if (snapshotUrl) {
-              setRevealDebugPath('snapshot-success')
-              setCapturedUrl(snapshotUrl)
-              // Skip masked-replay — go straight to slide (or reveal for zones).
-              const hasTearLine = (data.tearLine?.points?.length || 0) > 0 && !data.zones
-              if (hasTearLine) {
-                setPhase('slide')
-                setTimeout(() => setPhase('reveal'), 4500)
-              } else {
-                setPhase('reveal')
-              }
-            } else {
-              // Snapshot unavailable — render strokes in background then show replay.
-              setRevealDebugPath('stroke-fallback')
-              renderTearReveal(all, data, resolvedColorPage)
-                .then(fbDataUrl => { if (fbDataUrl) setCapturedUrl(fbDataUrl) })
-                .catch(() => {})
-              setRevealDebugPath('masked-replay')
-              setPhase('masked-replay')
-            }
+            renderTearReveal(all, data, resolvedColorPage)
+              .then(dataUrl => { if (dataUrl) setCapturedUrl(dataUrl) })
+              .catch(() => {})
+            // Show drawing evolution first — same as solo timelapse
+            setPhase('masked-replay')
           } else {
             // Solo / together mode: use the live canvas snapshot if available,
             // then run the timelapse for animation only.
@@ -1194,26 +1097,6 @@ export default function RevealScreen() {
           />
         )}
       </AnimatePresence>
-
-      {/* ── TEMP DEBUG BADGE — remove before release ──────────────────────── */}
-      {isTearMode && (() => {
-        const activePlayers = Object.entries(sessionData?.players || {})
-          .filter(([, p]) => p.name && !p.left && p.assignedSection)
-        const withUrl = activePlayers.filter(([, p]) => p.canvasSnapshotUrl)
-        return (
-          <div style={{
-            position: 'fixed', top: 8, left: 8, zIndex: 9999,
-            background: 'rgba(0,0,0,0.82)', color: '#0f0', fontFamily: 'monospace',
-            fontSize: 11, padding: '5px 8px', borderRadius: 6, lineHeight: 1.6,
-            pointerEvents: 'none', maxWidth: 'calc(100vw - 16px)',
-          }}>
-            <div>path: <b>{revealDebugPath}</b></div>
-            <div>phase: <b>{phase}</b></div>
-            <div>captured: <b>{capturedUrl ? 'yes' : 'no'}</b></div>
-            <div>urls: <b>{withUrl.length}/{activePlayers.length}</b></div>
-          </div>
-        )
-      })()}
     </div>
   )
 }
