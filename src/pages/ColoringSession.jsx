@@ -9,7 +9,7 @@ import {
   uploadPlayerSnapshot, setPlayerSnapshotUrl,
 } from '../lib/session'
 import { getPageById } from '../lib/coloringPages'
-import { buildAllowedMask, buildPolygonMask, smoothPoints, drawStroke } from '../lib/canvasUtils'
+import { buildRevealMask, buildPolygonMask, smoothPoints, drawStroke } from '../lib/canvasUtils'
 import ColorPicker from '../components/ColorPicker'
 import Toolbar from '../components/Toolbar'
 import LeaveRoomModal from '../components/LeaveRoomModal'
@@ -296,9 +296,11 @@ export default function ColoringSession() {
       if (maskKeyRef.current !== maskKey) {
         maskKeyRef.current = maskKey
         const isFirstBuild = !allowedMaskCanvasRef.current
+        // Use buildRevealMask (seam+2px) so the allowed drawing area matches exactly
+        // what RevealScreen will reveal — preventing seam dead-zone gaps.
         allowedMaskCanvasRef.current = zonePolygon
           ? buildPolygonMask(zonePolygon)
-          : buildAllowedMask(tearPoints, mySection, tearOrientation)
+          : buildRevealMask(tearPoints, mySection, tearOrientation)
         // Count the section's pixels once — progress is measured against this, not the full canvas.
         {
           const md = allowedMaskCanvasRef.current.getContext('2d').getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE).data
@@ -356,28 +358,30 @@ export default function ColoringSession() {
   // Clip drawing to the player's assigned section using the tear line polygon.
   // Reads clipSectionRef (a ref) so it never causes stale-closure issues in callbacks.
   //
-  // CLIP_SAFETY: inset tear boundary this many px toward the allowed side so
-  //   canvas anti-aliasing cannot produce visible pixels past the true tear line.
+  // CLIP_OVERLAP: extend each zone's clip boundary this many px PAST the seam into
+  //   the other player's territory. Combined with buildRevealMask (SEAM=2) as the
+  //   allowed mask, the effective drawing boundary is seam+2px — exactly matching
+  //   what RevealScreen reveals. This prevents any dead-zone gap at the seam.
   // CLIP_EDGE: extend the polygon this many px beyond each canvas edge so that
   //   no drawable canvas pixel ever lies exactly on the polygon boundary.
   //   Without this, pixels at x=0 (where the tear also starts) are "on the boundary"
   //   and the winding rule is ambiguous — causing the far-left-edge leak.
-  const CLIP_SAFETY = 2
+  const CLIP_OVERLAP = 4
   const CLIP_EDGE = 2
 
   function buildClipPath(ctx) {
     const { points, section, orientation = 'horizontal' } = clipSectionRef.current
     if (!points || !section) return
     const scale = CANVAS_SIZE / 400
-    const CE = CLIP_EDGE, CS = CLIP_SAFETY
+    const CE = CLIP_EDGE, CO = CLIP_OVERLAP
     const W = CANVAS_SIZE, H = CANVAS_SIZE
     const isZone0 = normalizeSection(section) === 'zone0'
     let sc
     if (orientation === 'vertical') {
-      const dx = isZone0 ? -CS : CS
+      const dx = isZone0 ? CO : -CO   // extend INTO other zone (applyAllowedMask is the binding clip)
       sc = points.map(p => ({ x: p.x * scale + dx, y: p.y * scale }))
     } else {
-      const dy = isZone0 ? -CS : CS
+      const dy = isZone0 ? CO : -CO   // extend INTO other zone (applyAllowedMask is the binding clip)
       sc = points.map(p => ({ x: p.x * scale, y: p.y * scale + dy }))
     }
     const last = sc.length - 1
@@ -907,7 +911,9 @@ export default function ColoringSession() {
     setPan({ x: 0, y: 0 })
   }
 
-  // Create a color-only JPEG snapshot from the player's color canvas (no line art).
+  // Create a transparent PNG snapshot from the player's color canvas (no line art, no white fill).
+  // Transparent pixels survive the destination-in composite in RevealScreen, letting both
+  // players' sections tile correctly with no white gaps at the seam.
   function captureColorSnapshot() {
     const colorCanvas = canvasRef.current
     if (!colorCanvas) return null
@@ -916,10 +922,11 @@ export default function ColoringSession() {
       snap.width = CANVAS_SIZE
       snap.height = CANVAS_SIZE
       const ctx = snap.getContext('2d')
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
       ctx.drawImage(colorCanvas, 0, 0)
-      return snap.toDataURL('image/jpeg', 0.82)
+      // Preview stroke on top — clear after Done tap so this is normally a no-op.
+      const sc = strokeCanvasRef.current
+      if (sc) ctx.drawImage(sc, 0, 0)
+      return snap.toDataURL('image/png')
     } catch {
       return null
     }

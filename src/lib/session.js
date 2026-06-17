@@ -406,9 +406,9 @@ export async function leaveRoom(code, playerId) {
 // ─── Storage snapshot helpers ─────────────────────────────────────────────────
 
 export async function uploadPlayerSnapshot(code, playerId, dataUrl) {
-  const path = `sessionSnapshots/${code}/${playerId}.jpg`
+  const path = `sessionSnapshots/${code}/${playerId}.png`
   const fileRef = storageRef(storage, path)
-  await uploadString(fileRef, dataUrl, 'data_url', { contentType: 'image/jpeg' })
+  await uploadString(fileRef, dataUrl, 'data_url', { contentType: 'image/png' })
   return getDownloadURL(fileRef)
 }
 
