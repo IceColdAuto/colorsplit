@@ -1,5 +1,6 @@
-import { db, DEMO_MODE } from './firebase'
+import { db, storage, DEMO_MODE } from './firebase'
 import { ref, set, get, update, push, onValue, off, onDisconnect } from 'firebase/database'
+import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage'
 import { v4 as uuidv4 } from 'uuid'
 
 // ─── In-memory store for demo mode ───────────────────────────────────────────
@@ -400,6 +401,22 @@ export async function leaveRoom(code, playerId) {
     [`sessions/${code}/abandonedAt`]: now,
   }
   await update(ref(db), updates)
+}
+
+// ─── Storage snapshot helpers ─────────────────────────────────────────────────
+
+export async function uploadPlayerSnapshot(code, playerId, dataUrl) {
+  const path = `sessionSnapshots/${code}/${playerId}.jpg`
+  const fileRef = storageRef(storage, path)
+  await uploadString(fileRef, dataUrl, 'data_url', { contentType: 'image/jpeg' })
+  return getDownloadURL(fileRef)
+}
+
+export async function setPlayerSnapshotUrl(code, playerId, url) {
+  await update(ref(db, `sessions/${code}/players/${playerId}`), {
+    canvasSnapshotUrl: url,
+    snapshotAt: Date.now(),
+  })
 }
 
 export async function resetRound(code, players) {

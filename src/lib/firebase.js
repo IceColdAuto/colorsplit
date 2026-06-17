@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getDatabase } from 'firebase/database'
+import { getStorage } from 'firebase/storage'
 
 const apiKey = import.meta.env.VITE_FIREBASE_API_KEY
 const databaseURL = import.meta.env.VITE_FIREBASE_DATABASE_URL
@@ -15,6 +16,7 @@ if (DEMO_MODE) {
 
 let db = null
 let app = null
+let storage = null
 
 if (!DEMO_MODE) {
   const firebaseConfig = {
@@ -28,6 +30,7 @@ if (!DEMO_MODE) {
   }
   app = initializeApp(firebaseConfig)
   db = getDatabase(app)
+  storage = getStorage(app)
 }
 
-export { db, app }
+export { db, app, storage }
