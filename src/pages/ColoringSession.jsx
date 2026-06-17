@@ -6,6 +6,7 @@ import {
   setPlayerDone, updatePlayerProgress, updateSessionStatus, getOrCreatePlayerId,
   updateLiveStroke, clearLiveStroke, subscribeToLiveStrokes, leaveRoom,
   setupPresence, removeStroke, setStrokeWithId, setMyStrokes, normalizeSection,
+  uploadPlayerSnapshot, setPlayerSnapshotUrl,
 } from '../lib/session'
 import { getPageById } from '../lib/coloringPages'
 import { buildAllowedMask, buildPolygonMask, smoothPoints, drawStroke } from '../lib/canvasUtils'
@@ -139,6 +140,7 @@ export default function ColoringSession() {
   const containerSizeRef = useRef(375)    // current container px, readable from no-dep handlers
   const lastTapRef = useRef(0)            // double-tap-to-reset detection
   const gesturePinchedRef = useRef(false) // a 2-finger gesture happened this touch sequence
+  const pendingStrokeWritesRef = useRef(new Set()) // tracks in-flight addStroke promises for flush-before-done
 
   // Derived from state — must be declared before any useCallback that references it in deps
   const size = tool === 'eraser' ? eraserSize : pencilSize
@@ -609,16 +611,22 @@ export default function ColoringSession() {
       if (historyRef.current.length > 10) { historyRef.current.shift(); actionsRef.current.shift() }
       preStrokeSnapshotRef.current = null
     }
-    try {
-      const id = await addStroke(code, playerId, stroke)
-      action.id = id
-      if (action.cancelled) {
-        // Undo happened before the write resolved — delete it now.
-        removeStroke(code, playerId, id).catch(() => {})
-      } else if (id) {
-        myStrokesRef.current[id] = stroke
+    const writePromise = (async () => {
+      try {
+        const id = await addStroke(code, playerId, stroke)
+        action.id = id
+        if (action.cancelled) {
+          // Undo happened before the write resolved — delete it now.
+          removeStroke(code, playerId, id).catch(() => {})
+        } else if (id) {
+          myStrokesRef.current[id] = stroke
+        }
+      } catch (err) {
+        console.warn('[ColorSplit] addStroke failed — stroke may be missing at reveal:', err?.message)
       }
-    } catch {}
+    })()
+    pendingStrokeWritesRef.current.add(writePromise)
+    writePromise.finally(() => pendingStrokeWritesRef.current.delete(writePromise))
   }, [code, playerId, color, opacity, size, tool])
 
   function calculateProgress() {
@@ -899,6 +907,24 @@ export default function ColoringSession() {
     setPan({ x: 0, y: 0 })
   }
 
+  // Create a color-only JPEG snapshot from the player's color canvas (no line art).
+  function captureColorSnapshot() {
+    const colorCanvas = canvasRef.current
+    if (!colorCanvas) return null
+    try {
+      const snap = document.createElement('canvas')
+      snap.width = CANVAS_SIZE
+      snap.height = CANVAS_SIZE
+      const ctx = snap.getContext('2d')
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
+      ctx.drawImage(colorCanvas, 0, 0)
+      return snap.toDataURL('image/jpeg', 0.82)
+    } catch {
+      return null
+    }
+  }
+
   // Save merged canvas for reveal
   function saveCanvasForReveal() {
     const colorCanvas = canvasRef.current
@@ -927,6 +953,25 @@ export default function ColoringSession() {
     saveCanvasForReveal()
     setIsDone(true)
     setShowDoneConfirm(false)
+    // Color Together only: upload real color canvas snapshot to Firebase Storage.
+    if (session?.settings?.mode === 'tear') {
+      try {
+        const dataUrl = captureColorSnapshot()
+        if (dataUrl) {
+          const url = await uploadPlayerSnapshot(code, playerId, dataUrl)
+          await setPlayerSnapshotUrl(code, playerId, url)
+        }
+      } catch (err) {
+        console.warn('[ColorSplit] Snapshot upload failed — falling back to stroke reconstruction:', err?.message)
+      }
+    }
+    // Flush in-flight stroke writes before marking done in Firebase so
+    // getAllStrokes on the reveal screen sees the complete set of strokes.
+    const pendingWrites = [...pendingStrokeWritesRef.current]
+    if (pendingWrites.length > 0) {
+      const timeout = new Promise(resolve => setTimeout(resolve, 6000))
+      await Promise.race([Promise.allSettled(pendingWrites), timeout])
+    }
     try {
       await setPlayerDone(code, playerId, true)
       // Navigation to reveal is handled by the subscription when all players are done
