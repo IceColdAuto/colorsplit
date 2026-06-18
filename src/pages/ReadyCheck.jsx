@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { subscribeToSession, setPlayerReady, updateSessionStatus, getOrCreatePlayerId, leaveRoom, setupPresence } from '../lib/session'
-import { AVATARS, AVATAR_COLORS } from '../lib/profile'
+import { AVATAR_COLORS } from '../lib/profile'
 import RoomStatusBar from '../components/RoomStatusBar'
+import PencilTip from '../components/PencilTip'
 import LeaveRoomModal from '../components/LeaveRoomModal'
 
 export default function ReadyCheck() {
@@ -141,15 +142,12 @@ export default function ReadyCheck() {
               <div className="space-y-2">
                 {players.map(([pid, player]) => (
                   <div key={pid} className="flex items-center gap-3 py-2 px-3 bg-cream rounded-xl">
-                    {/* Avatar circle */}
+                    {/* Pencil avatar */}
                     <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center text-base flex-shrink-0 font-bold"
-                      style={{
-                        background: AVATAR_COLORS.find(c => c.id === player.colorId)?.hex || '#dbeafe',
-                        color: '#1e3a5f',
-                      }}
+                      className="w-9 h-9 rounded-[11px] flex items-center justify-center flex-shrink-0 overflow-hidden"
+                      style={{ background: AVATAR_COLORS.find(c => c.id === player.colorId)?.hex || AVATAR_COLORS[0].hex }}
                     >
-                      {AVATARS.find(a => a.id === player.avatarId)?.emoji || player.name?.[0] || '?'}
+                      <PencilTip size={25} />
                     </div>
                     {/* Ready indicator */}
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors ${

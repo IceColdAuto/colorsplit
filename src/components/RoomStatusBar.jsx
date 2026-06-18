@@ -1,4 +1,17 @@
-import { AVATARS } from '../lib/profile'
+import { AVATAR_COLORS } from '../lib/profile'
+import PencilTip from './PencilTip'
+
+function MiniPencilAvatar({ colorId }) {
+  const col = AVATAR_COLORS.find(c => c.id === colorId) || AVATAR_COLORS[0]
+  return (
+    <div
+      className="rounded-[5px] flex items-center justify-center flex-shrink-0 overflow-hidden"
+      style={{ width: 16, height: 16, background: col.hex }}
+    >
+      <PencilTip size={11} />
+    </div>
+  )
+}
 
 export default function RoomStatusBar({ session, code }) {
   if (!session || !code) return null
@@ -20,10 +33,7 @@ export default function RoomStatusBar({ session, code }) {
       <div className="flex items-center gap-2.5 flex-1 min-w-0 overflow-hidden">
         {players.map(([pid, player]) => (
           <div key={pid} className="flex items-center gap-1 min-w-0">
-            {player.avatarId
-              ? <span className="text-[11px] leading-none flex-shrink-0">{AVATARS.find(a => a.id === player.avatarId)?.emoji || ''}</span>
-              : <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${player.done ? 'bg-green-400' : player.ready ? 'bg-blue-400' : 'bg-ink/20'}`} />
-            }
+            <MiniPencilAvatar colorId={player.colorId} />
             <span className="text-ink/50 text-[11px] truncate">{player.name || '—'}</span>
           </div>
         ))}
