@@ -78,16 +78,16 @@ function generateParticles(count) {
   return Array.from({ length: count }, (_, i) => ({
     id: i,
     x: Math.random() * 100,
-    delay: Math.random() * 0.9,
-    duration: 1.6 + Math.random() * 1.2,
+    delay: Math.random() * 1.4,
+    duration: 2.2 + Math.random() * 1.6,
     color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-    size: 6 + Math.random() * 8,
+    size: 7 + Math.random() * 10,
     isCircle: Math.random() > 0.5,
   }))
 }
 
 function Confetti() {
-  const particles = useMemo(() => generateParticles(80), [])
+  const particles = useMemo(() => generateParticles(140), [])
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 50 }}>
       {particles.map(p => (
@@ -347,10 +347,10 @@ export default function RevealScreen() {
     return unsub
   }, [code])
 
-  // ── Auto-dismiss confetti after 2.8s ──────────────────────────────────────
+  // ── Auto-dismiss confetti after 4.2s ──────────────────────────────────────
   useEffect(() => {
     if (!showConfetti) return
-    const t = setTimeout(() => setShowConfetti(false), 2800)
+    const t = setTimeout(() => setShowConfetti(false), 4200)
     return () => clearTimeout(t)
   }, [showConfetti])
 

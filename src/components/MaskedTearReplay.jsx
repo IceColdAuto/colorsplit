@@ -253,12 +253,6 @@ export default function MaskedTearReplay({ allStrokes, sessionData, colorPage, w
                 {s}×
               </button>
             ))}
-            <button
-              onPointerDown={() => { skipRef.current = true }}
-              className="text-xs font-body px-2.5 py-1.5 rounded-lg bg-white text-black font-semibold ml-1"
-            >
-              Skip
-            </button>
           </div>
         </div>
       )}
