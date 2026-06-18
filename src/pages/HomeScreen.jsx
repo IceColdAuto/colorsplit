@@ -7,6 +7,7 @@ import {
 } from '../lib/session'
 import { DEMO_MODE } from '../lib/firebase'
 import { getProfile, isProfileComplete, getCachedAccountProfile, saveCachedAccountProfile } from '../lib/profile'
+import { getUserProfile } from '../lib/auth'
 import ProfileSetup from '../components/ProfileSetup'
 import ProfileButton from '../components/ProfileButton'
 import AuthModal from '../components/AuthModal'
@@ -51,9 +52,8 @@ export default function HomeScreen() {
     setInviteError('')
     try {
       const playerId = getOrCreatePlayerId()
-      const playerName = getOrCreatePlayerName()
-      const p = getProfile()
-      await joinSession(inv.sessionCode, playerId, playerName, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null)
+      const { name: playerName, avatarId, colorId } = await resolveMultiplayerIdentity()
+      await joinSession(inv.sessionCode, playerId, playerName, avatarId, colorId, user?.uid ?? null)
       respondToInvite(user.uid, inv.id, 'accepted').catch(() => {})
       navigate(`/session/${inv.sessionCode}/lobby`)
     } catch (e) {
@@ -148,9 +148,15 @@ export default function HomeScreen() {
 
   // Cloud profile is the source of truth for signed-in display; persist to uid-specific cache.
   // Cloud wins when non-blank; existing uid cache fills any missing/blank cloud fields.
+  // Guard: if the uid cache was saved more recently than the cloudProfile snapshot (captured
+  // once at login by ensureUserProfile), the user manually updated via ProfileButton — keep it.
   useEffect(() => {
     if (!user || !cloudProfile) return
     const existing = getCachedAccountProfile(user.uid)
+    if (existing?.updatedAt && cloudProfile?.lastSeenAt && existing.updatedAt > cloudProfile.lastSeenAt) {
+      setProfile(existing)
+      return
+    }
     const mapped = {
       username: cloudProfile.displayName || existing?.username || '',
       avatarId: cloudProfile.avatarId || existing?.avatarId || 'cat',
@@ -160,7 +166,32 @@ export default function HomeScreen() {
     setProfile(mapped)
   }, [user, cloudProfile])
 
-  // ─── Handlers (unchanged) ────────────────────────────────────────────────
+  // Resolves the freshest available identity for multiplayer player records.
+  // Auth users: fresh Firebase read > uid cache > profile state. Guests: guest profile > random.
+  async function resolveMultiplayerIdentity() {
+    if (user?.uid) {
+      try {
+        const fresh = await getUserProfile(user.uid)
+        if (fresh?.displayName?.trim()) {
+          return { name: fresh.displayName.trim(), avatarId: fresh.avatarId || null, colorId: fresh.colorId || null }
+        }
+      } catch {}
+      const cached = getCachedAccountProfile(user.uid)
+      if (cached?.username?.trim()) {
+        return { name: cached.username.trim(), avatarId: cached.avatarId ?? null, colorId: cached.colorId ?? null }
+      }
+      if (profile?.username?.trim()) {
+        return { name: profile.username.trim(), avatarId: profile.avatarId ?? null, colorId: profile.colorId ?? null }
+      }
+    }
+    const guestProfile = getProfile()
+    return {
+      name: guestProfile?.username?.trim() || getOrCreatePlayerName(),
+      avatarId: guestProfile?.avatarId ?? null,
+      colorId: guestProfile?.colorId ?? null,
+    }
+  }
+
   async function handleCreate() {
     setCreating(true)
     setCreateError('')
@@ -171,13 +202,12 @@ export default function HomeScreen() {
     }
     try {
       const playerId = getOrCreatePlayerId()
-      const playerName = getOrCreatePlayerName()
-      const p = getProfile()
+      const { name: playerName, avatarId, colorId } = await resolveMultiplayerIdentity()
       const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Taking too long — check your connection and try again.')), 9000)
       )
       const code = await Promise.race([
-        createSession(playerId, playerName, false, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null),
+        createSession(playerId, playerName, false, avatarId, colorId, user?.uid ?? null),
         timeout,
       ])
       navigate(`/session/${code}/lobby`)
@@ -194,9 +224,8 @@ export default function HomeScreen() {
     setJoinError('')
     try {
       const playerId = getOrCreatePlayerId()
-      const playerName = getOrCreatePlayerName()
-      const p = getProfile()
-      await joinSession(trimmed, playerId, playerName, p?.avatarId ?? null, p?.colorId ?? null, user?.uid ?? null)
+      const { name: playerName, avatarId, colorId } = await resolveMultiplayerIdentity()
+      await joinSession(trimmed, playerId, playerName, avatarId, colorId, user?.uid ?? null)
       navigate(`/session/${trimmed}/lobby`)
     } catch (e) {
       setJoinError(e.message || 'Session not found')

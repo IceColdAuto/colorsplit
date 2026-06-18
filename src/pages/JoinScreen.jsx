@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { joinSession, getOrCreatePlayerId, getOrCreatePlayerName } from '../lib/session'
-import { getProfile } from '../lib/profile'
+import { getProfile, getCachedAccountProfile } from '../lib/profile'
+import { getUserProfile } from '../lib/auth'
+import useAuth from '../hooks/useAuth'
 
 export default function JoinScreen() {
   const { code: urlCode } = useParams()
@@ -13,6 +15,7 @@ export default function JoinScreen() {
   const [autoJoining, setAutoJoining] = useState(!!urlCode)
   const autoJoinAttemptedRef = useRef(false)
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   async function doJoin(rawCode) {
     const trimmed = rawCode.trim().toUpperCase()
@@ -21,9 +24,21 @@ export default function JoinScreen() {
     setError('')
     try {
       const playerId = getOrCreatePlayerId()
-      const playerName = getOrCreatePlayerName()
-      const p = getProfile()
-      await joinSession(trimmed, playerId, playerName, p?.avatarId ?? null, p?.colorId ?? null)
+      let playerName, avatarId, colorId
+      if (user?.uid) {
+        let fresh = null
+        try { fresh = await getUserProfile(user.uid) } catch {}
+        const cached = getCachedAccountProfile(user.uid)
+        playerName = fresh?.displayName?.trim() || cached?.username?.trim() || getOrCreatePlayerName()
+        avatarId = fresh?.avatarId || cached?.avatarId || null
+        colorId = fresh?.colorId || cached?.colorId || null
+      } else {
+        const guestProfile = getProfile()
+        playerName = guestProfile?.username?.trim() || getOrCreatePlayerName()
+        avatarId = guestProfile?.avatarId ?? null
+        colorId = guestProfile?.colorId ?? null
+      }
+      await joinSession(trimmed, playerId, playerName, avatarId, colorId, user?.uid ?? null)
       navigate(`/session/${trimmed}/lobby`, { replace: true })
     } catch (e) {
       setError(e.message || 'Session not found')
