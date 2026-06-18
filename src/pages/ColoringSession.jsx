@@ -9,6 +9,7 @@ import {
   uploadPlayerSnapshot, setPlayerSnapshotUrl,
 } from '../lib/session'
 import { getPageById } from '../lib/coloringPages'
+import { AVATAR_COLORS } from '../lib/profile'
 import { buildRevealMask, buildPolygonMask, smoothPoints, drawStroke } from '../lib/canvasUtils'
 import ColorPicker from '../components/ColorPicker'
 import Toolbar from '../components/Toolbar'
@@ -93,6 +94,7 @@ export default function ColoringSession() {
   const [panMode, setPanMode] = useState(false)
   const [isDone, setIsDone] = useState(false)
   const [othersDoneNames, setOthersDoneNames] = useState([])
+  const [partnerDoneToast, setPartnerDoneToast] = useState(null) // { message, colorHex } | null
   const [showDoneConfirm, setShowDoneConfirm] = useState(false)
   const [showLeaveModal, setShowLeaveModal] = useState(false)
   const [leftPlayerNames, setLeftPlayerNames] = useState([])
@@ -170,6 +172,23 @@ export default function ColoringSession() {
     ro.observe(containerRef.current)
     return () => ro.disconnect()
   }, [])
+
+  // Auto-hide toast when a partner marks themselves done
+  const prevDoneNamesRef = useRef([])
+  useEffect(() => {
+    const prev = prevDoneNamesRef.current
+    const newlyDone = othersDoneNames.filter(n => !prev.includes(n))
+    if (newlyDone.length > 0) {
+      const doneName = newlyDone[0]
+      const donePlayer = Object.values(otherProgress).find(p => p.name === doneName)
+      const colorHex = AVATAR_COLORS.find(c => c.id === donePlayer?.colorId)?.hex || null
+      setPartnerDoneToast({ message: `${doneName} is ready ✨`, colorHex })
+      const t = setTimeout(() => setPartnerDoneToast(null), 4000)
+      prevDoneNamesRef.current = othersDoneNames
+      return () => clearTimeout(t)
+    }
+    prevDoneNamesRef.current = othersDoneNames
+  }, [othersDoneNames.join(',')])
 
   // Presence: only set up after session confirms this player is a real participant.
   // Calling setupPresence for an unknown playerId would create a phantom player entry in Firebase.
@@ -1158,12 +1177,32 @@ export default function ColoringSession() {
             <span className="text-[12px] font-bold font-body text-violet-600 truncate w-full text-center leading-tight">
               {progressPhrase(combinedProgress, isSolo)}
             </span>
-            {/* Per-player breakdown (multiplayer only) */}
-            {!isSolo && (
-              <span className="text-[10px] font-semibold font-body text-ink/60 truncate w-full text-center leading-none">
-                You {progress}%{partnerProgressLabel}
-              </span>
-            )}
+            {/* Per-player chips (multiplayer only) — scrollable for 3–4 players */}
+            {!isSolo && (() => {
+              const myColorHex = AVATAR_COLORS.find(c => c.id === session?.players?.[playerId]?.colorId)?.hex || '#E0D4FF'
+              return (
+                <div className="flex gap-1 overflow-x-auto w-full justify-center" style={{ scrollbarWidth: 'none' }}>
+                  <span
+                    className="flex-shrink-0 text-[10px] font-semibold font-body text-ink/70 px-2 py-0.5 rounded-full leading-none"
+                    style={{ background: myColorHex }}
+                  >
+                    You {isDone ? '✓' : `${progress}%`}
+                  </span>
+                  {activePartners.map((p, i) => {
+                    const hex = AVATAR_COLORS.find(c => c.id === p.colorId)?.hex || '#C8F0DC'
+                    return (
+                      <span
+                        key={i}
+                        className="flex-shrink-0 text-[10px] font-semibold font-body text-ink/70 px-2 py-0.5 rounded-full leading-none"
+                        style={{ background: hex }}
+                      >
+                        {(p.name || 'Friend').split(' ')[0]} {p.done ? '✓' : `${p.progress || 0}%`}
+                      </span>
+                    )
+                  })}
+                </div>
+              )
+            })()}
           </div>
         </div>
         <button
@@ -1210,14 +1249,22 @@ export default function ColoringSession() {
               </span>
             </div>
           )}
-          {othersDoneNames.length > 0 && !isDone && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50/95 backdrop-blur-sm border border-amber-200 shadow-sm">
-              <span className="text-amber-500 text-sm">✓</span>
-              <span className="font-body text-amber-800 text-xs font-semibold">
-                {othersDoneNames.join(' & ')} {othersDoneNames.length === 1 ? 'is' : 'are'} done — finish up when you're ready!
-              </span>
-            </div>
-          )}
+          <AnimatePresence>
+            {partnerDoneToast && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-cream/95 backdrop-blur-sm border border-ink/10 shadow-md self-center mx-auto"
+                style={{ pointerEvents: 'none' }}
+              >
+                {partnerDoneToast.colorHex && (
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-ink/15" style={{ background: partnerDoneToast.colorHex }} />
+                )}
+                <span className="font-body text-ink text-xs font-semibold">{partnerDoneToast.message}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
         <div
           style={{
