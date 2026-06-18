@@ -14,6 +14,7 @@ import { getProfile } from '../lib/profile'
 import { saveArtwork, compressImageDataUrl, markArtworkMigrated, loadGallery } from '../lib/gallery'
 import { saveArtworkToCloud } from '../lib/cloudGallery'
 import useAuth from '../hooks/useAuth'
+import ReplayModal from '../components/ReplayModal'
 
 const CANVAS_SIZE = 800
 
@@ -207,6 +208,11 @@ export default function RevealScreen() {
   const [soloStarting, setSoloStarting] = useState(false)
   const [soloStartError, setSoloStartError] = useState('')
 
+  const [showReplay, setShowReplay] = useState(false)
+
+  const autoReplayRef = useRef(false)
+  const pendingConfettiRef = useRef(false)
+
   const autosaveRef = useRef(false)
   const buildInitiatedRef = useRef(false)
   const resetInitiatedRef = useRef(false)
@@ -275,7 +281,7 @@ export default function RevealScreen() {
         const snapshot = sessionStorage.getItem(`colorsplit_canvas_${code}_latest`)
         if (snapshot) {
           setCombinedUrl(snapshot)
-          setShowConfetti(true)
+          pendingConfettiRef.current = true
           setPhase('reveal')
           return
         }
@@ -289,7 +295,7 @@ export default function RevealScreen() {
           buildColorTogetherImage([{ canvasSnapshotUrl: firebaseUrl }], resolvedColorPage)
             .then(url => {
               setCombinedUrl(url)
-              setShowConfetti(true)
+              pendingConfettiRef.current = true
               setPhase('reveal')
             })
             .catch(() => {
@@ -329,7 +335,7 @@ export default function RevealScreen() {
       buildColorTogetherImage(players.map(([, p]) => p), resolvedColorPage)
         .then(url => {
           setCombinedUrl(url)
-          setShowConfetti(true)
+          pendingConfettiRef.current = true
           setPhase('reveal')
         })
         .catch(err => {
@@ -354,6 +360,34 @@ export default function RevealScreen() {
     autosaveRef.current = true
     doSaveArtwork()
   }, [phase, combinedUrl, sessionData])
+
+  // ── Auto-open replay once per session when artwork is ready ───────────────
+  useEffect(() => {
+    if (phase !== 'reveal' || !combinedUrl || !sessionData || autoReplayRef.current) return
+    let seenBefore = false
+    try { seenBefore = !!sessionStorage.getItem(`colorsplit_replay_seen_${code}`) } catch {}
+    if (seenBefore) {
+      // Replay already seen (refresh / back-nav) — fire confetti immediately.
+      if (pendingConfettiRef.current) {
+        pendingConfettiRef.current = false
+        setShowConfetti(true)
+      }
+      return
+    }
+    try { sessionStorage.setItem(`colorsplit_replay_seen_${code}`, 'true') } catch {}
+    autoReplayRef.current = true
+    setShowReplay(true)
+    // confetti fires in handleReplayClose when the modal closes
+  }, [phase, combinedUrl, sessionData, code])
+
+  // ── Close replay modal — fire deferred confetti on first (auto) close ─────
+  function handleReplayClose() {
+    setShowReplay(false)
+    if (pendingConfettiRef.current) {
+      pendingConfettiRef.current = false
+      setShowConfetti(true)
+    }
+  }
 
   // ── Celebrate (re-fire confetti) ──────────────────────────────────────────
   function handleCelebrate() {
@@ -621,20 +655,16 @@ export default function RevealScreen() {
           >
             Masterpiece!
           </h1>
-          <p className="text-gray-500 font-body text-sm mt-1">
-            {isSolo ? 'Saved to your gallery.' : 'Made together. Saved to your gallery.'}
+          <p className="font-body text-xs font-semibold text-green-600 mt-1">
+            {isSolo ? '✓ Saved to your gallery' : '✓ Saved to your gallery'}
           </p>
         </div>
 
-        {/* Save toast */}
-        {saveResult && (
-          <div className={`w-full text-center px-4 py-2 rounded-2xl font-body text-sm font-semibold ${
-            saveResult === 'saved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-          }`}>
-            {saveResult === 'saved'
-              ? (user ? '✓ Saved to your account gallery' : '✓ Saved to your gallery')
-              : "⚠️ Couldn't save — device storage may be full"}
-          </div>
+        {/* Save error only — success is shown in the subtitle above */}
+        {saveResult === 'failed' && (
+          <p className="font-body text-xs font-semibold text-red-500">
+            ⚠️ Couldn't save — device storage may be full
+          </p>
         )}
 
         {/* Final artwork */}
@@ -651,8 +681,8 @@ export default function RevealScreen() {
         {/* Action buttons */}
         <div className="w-full grid grid-cols-4 gap-2">
           {[
-            { icon: '🎉', label: 'Celebrate',   onClick: handleCelebrate,              disabled: false        },
-            { icon: '⬇️', label: 'Download',    onClick: handleDownload,               disabled: !combinedUrl },
+            { icon: '🎉', label: 'Celebrate',    onClick: handleCelebrate,             disabled: false        },
+            { icon: '⬇️', label: 'Download',     onClick: handleDownload,              disabled: !combinedUrl },
             { icon: shareMsg ? '✓' : '🔗', label: shareMsg || 'Share', onClick: handleShare, disabled: !combinedUrl },
             { icon: '🖼️', label: 'View Gallery', onClick: () => navigate('/gallery'),  disabled: false        },
           ].map(({ icon, label, onClick, disabled }) => (
@@ -667,6 +697,15 @@ export default function RevealScreen() {
             </button>
           ))}
         </div>
+
+        {/* Replay — optional extra, below core actions */}
+        <button
+          onClick={() => setShowReplay(true)}
+          className="w-full bg-white border border-gray-100 rounded-2xl py-3 px-4 flex items-center justify-center gap-2 active:scale-95 transition-transform shadow-sm"
+        >
+          <span className="text-base">⏩</span>
+          <span className="text-gray-700 font-body text-sm font-semibold">Watch Replay</span>
+        </button>
 
         {/* Partners-wanting-again nudge */}
         {!isSolo && !wantsAgain && partnersWantingAgain.length > 0 && (
@@ -761,6 +800,16 @@ export default function RevealScreen() {
           </div>
         )}
       </div>
+
+      {showReplay && (
+        <ReplayModal
+          code={code}
+          sessionData={sessionData}
+          playerId={playerId}
+          colorPage={colorPage}
+          onClose={handleReplayClose}
+        />
+      )}
     </div>
   )
 }
