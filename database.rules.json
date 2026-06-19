@@ -3,7 +3,64 @@
     "sessions": {
       "$code": {
         ".read": true,
-        ".write": true
+        ".write": true,
+
+        "status": {
+          ".validate": "newData.isString() && newData.val().matches(/^(waiting|picking|tearing|ready_check|coloring|done)$/)"
+        },
+        "hostId": {
+          ".validate": "newData.isString() && newData.val().length > 0"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "roundControllerId": {
+          ".validate": "!newData.exists() || newData.isString()"
+        },
+        "abandoned": {
+          ".validate": "newData.isBoolean()"
+        },
+        "abandonedBy": {
+          ".validate": "!newData.exists() || newData.isString()"
+        },
+        "abandonedAt": {
+          ".validate": "!newData.exists() || newData.isNumber()"
+        },
+
+        "settings": {
+          "mode":       { ".validate": "newData.isString() && newData.val().matches(/^(solo|tear)$/)" },
+          "visibility": { ".validate": "newData.isString() && newData.val().matches(/^(live|reveal)$/)" },
+          "lineHelper": { ".validate": "newData.isString()" }
+        },
+
+        "players": {
+          "$playerId": {
+            "name":             { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100" },
+            "avatarId":         { ".validate": "!newData.exists() || newData.isString()" },
+            "colorId":          { ".validate": "!newData.exists() || newData.isString()" },
+            "uid":              { ".validate": "!newData.exists() || newData.val() === null || newData.isString()" },
+            "ready":            { ".validate": "newData.isBoolean()" },
+            "done":             { ".validate": "newData.isBoolean()" },
+            "connected":        { ".validate": "newData.isBoolean()" },
+            "left":             { ".validate": "newData.isBoolean()" },
+            "wantsAgain":       { ".validate": "!newData.exists() || newData.isBoolean()" },
+            "progress":         { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100" },
+            "lastSeenAt":       { ".validate": "!newData.exists() || newData.isNumber()" },
+            "leftAt":           { ".validate": "!newData.exists() || newData.isNumber()" },
+            "doneAt":           { ".validate": "!newData.exists() || newData.isNumber()" },
+            "snapshotAt":       { ".validate": "!newData.exists() || newData.isNumber()" },
+            "assignedSection":  { ".validate": "!newData.exists() || newData.isString()" },
+            "canvasSnapshotUrl":{ ".validate": "!newData.exists() || newData.isString()" }
+          }
+        },
+
+        "strokes": {
+          "$playerId": {
+            "$strokeId": {
+              ".validate": "!newData.exists() || (newData.hasChildren(['points','color','tool','timestamp']) && newData.child('color').isString() && newData.child('tool').isString() && newData.child('tool').val().matches(/^(pencil|eraser)$/) && newData.child('timestamp').isNumber() && (!newData.hasChild('opacity') || newData.child('opacity').isNumber()) && (!newData.hasChild('size') || newData.child('size').isNumber()))"
+            }
+          }
+        }
       }
     },
 
