@@ -14,6 +14,7 @@ import { app, db, DEMO_MODE } from './firebase'
 import {
   getAuth,
   onAuthStateChanged,
+  signInAnonymously as fbSignInAnonymously,
   GoogleAuthProvider,
   OAuthProvider,
   signInWithPopup,
@@ -54,6 +55,21 @@ export function subscribeToAuth(callback) {
 
 export function getCurrentUser() {
   return getAuthInstance()?.currentUser ?? null
+}
+
+// Silently sign in as an anonymous Firebase user when no real account is active.
+// Every player (guest or signed-in) needs a Firebase UID for RTDB session rules.
+// Safe to call when already authenticated — returns the current user immediately.
+export async function ensureAnonymousAuth() {
+  const auth = getAuthInstance()
+  if (!auth) return null
+  if (auth.currentUser) return auth.currentUser
+  try {
+    const result = await fbSignInAnonymously(auth)
+    return result.user
+  } catch {
+    return null
+  }
 }
 
 export async function signOutUser() {

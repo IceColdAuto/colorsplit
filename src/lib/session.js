@@ -1,4 +1,5 @@
 import { db, storage, DEMO_MODE } from './firebase'
+import { ensureAnonymousAuth } from './auth'
 import { ref, set, get, update, push, onValue, off, onDisconnect } from 'firebase/database'
 import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage'
 import { v4 as uuidv4 } from 'uuid'
@@ -165,11 +166,13 @@ export function setupPresence(code, playerId) {
 
 export async function getSession(code) {
   if (DEMO_MODE) return memGet(`sessions/${code}`)
+  await ensureAnonymousAuth()
   const snap = await get(ref(db, `sessions/${code}`))
   return snap.exists() ? snap.val() : null
 }
 
 export async function createSession(hostId, hostName, solo = false, avatarId = null, colorId = null, uid = null) {
+  if (!DEMO_MODE) await ensureAnonymousAuth()
   const code = generateSessionCode()
   const data = {
     status: 'waiting',
@@ -197,6 +200,7 @@ export async function createSession(hostId, hostName, solo = false, avatarId = n
 export const MAX_PLAYERS = 4
 
 export async function joinSession(code, playerId, playerName, avatarId = null, colorId = null, uid = null) {
+  if (!DEMO_MODE) await ensureAnonymousAuth()
   if (DEMO_MODE) {
     const session = memGet(`sessions/${code}`)
     if (!session) throw new Error('Session not found')

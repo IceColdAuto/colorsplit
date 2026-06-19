@@ -2,8 +2,8 @@
   "rules": {
     "sessions": {
       "$code": {
-        ".read": true,
-        ".write": true,
+        ".read": "auth != null",
+        ".write": "auth != null",
 
         "status": {
           ".validate": "newData.isString() && newData.val().matches(/^(waiting|picking|tearing|ready_check|coloring|done)$/)"

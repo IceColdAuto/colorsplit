@@ -3,6 +3,7 @@ import {
   subscribeToAuth,
   completeEmailLinkSignIn,
   ensureUserProfile,
+  ensureAnonymousAuth,
   isAuthAvailable,
 } from '../lib/auth'
 
@@ -41,9 +42,15 @@ export default function useAuth() {
       if (cancelled) return
       // Stamp this auth event so any in-flight async from a prior event can detect it's stale.
       const callId = ++callIdRef.current
-      setUser(u)
+
+      // Anonymous Firebase users are an invisible implementation detail —
+      // they exist only so session security rules have an auth.uid to check.
+      // Treat them exactly like "no user" from the UI's perspective.
+      const isAnonymous = u?.isAnonymous === true
+      setUser(isAnonymous ? null : u)
       setProfile(null)
-      if (u) {
+
+      if (u && !isAnonymous) {
         setProfileLoading(true)
         try {
           const p = await ensureUserProfile(u)
@@ -60,6 +67,10 @@ export default function useAuth() {
         }
       } else {
         setProfileLoading(false)
+        // No Firebase user at all — silently sign in anonymously so RTDB session
+        // rules have an auth.uid. The resulting onAuthStateChanged fires again
+        // with isAnonymous=true and is treated as no-user above.
+        if (!u && !cancelled) ensureAnonymousAuth()
       }
       if (!cancelled && callIdRef.current === callId) setLoading(false)
     })
