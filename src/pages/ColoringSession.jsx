@@ -1011,12 +1011,19 @@ export default function ColoringSession() {
       try {
         const dataUrl = captureColorSnapshot()
         if (dataUrl) {
-          const url = await uploadPlayerSnapshot(code, playerId, dataUrl)
+          try { sessionStorage.setItem(`colorsplit_transparent_snapshot_${code}_${playerId}`, dataUrl) } catch {}
+          let url
+          try {
+            url = await uploadPlayerSnapshot(code, playerId, dataUrl)
+          } catch {
+            // First attempt failed — retry once after 1.5s.
+            await new Promise(r => setTimeout(r, 1500))
+            url = await uploadPlayerSnapshot(code, playerId, dataUrl)
+          }
           await setPlayerSnapshotUrl(code, playerId, url)
         }
       } catch (err) {
-        console.warn('[ColorSplit] Snapshot upload failed — reveal will retry from strokes:', err?.message)
-        // Upload failure is non-fatal: RevealScreen shows a retry prompt if snapshot is missing.
+        console.warn('[ColorSplit] Snapshot upload failed after retry — sessionStorage fallback available for reveal:', err?.message)
       }
     }
     setDonePhase('waiting')

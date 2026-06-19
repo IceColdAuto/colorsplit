@@ -217,6 +217,9 @@ export default function RevealScreen() {
   const buildInitiatedRef = useRef(false)
   const resetInitiatedRef = useRef(false)
   const sessionRef = useRef(null)
+  const missingRetryCountRef = useRef(0)
+  const retryTimerRef = useRef(null)
+  const handleRetryRef = useRef(null)
 
   const isSolo = sessionData?.settings?.mode === 'solo'
 
@@ -319,20 +322,36 @@ export default function RevealScreen() {
         return
       }
 
-      const missing = players.filter(([, p]) => !p.canvasSnapshotUrl)
+      // Patch local player's missing canvasSnapshotUrl from the transparent sessionStorage fallback.
+      // Do NOT use colorsplit_canvas_${code}_latest — that snapshot is white-filled with line art.
+      const transparentFallback = sessionStorage.getItem(`colorsplit_transparent_snapshot_${code}_${playerId}`)
+      const patchedPlayers = players.map(([pid, p]) =>
+        pid === playerId && !p.canvasSnapshotUrl && transparentFallback
+          ? [pid, { ...p, canvasSnapshotUrl: transparentFallback }]
+          : [pid, p]
+      )
+
+      const missing = patchedPlayers.filter(([, p]) => !p.canvasSnapshotUrl)
       if (missing.length > 0) {
-        setError('Reveal image is still preparing. Try again in a moment.')
-        setPhase('error')
         buildInitiatedRef.current = false
+        if (missingRetryCountRef.current < 3) {
+          missingRetryCountRef.current += 1
+          clearTimeout(retryTimerRef.current)
+          retryTimerRef.current = setTimeout(() => handleRetryRef.current?.(), 3000)
+        } else {
+          setError('Reveal image is still preparing. Tap Retry when ready.')
+          setPhase('error')
+        }
         return
       }
+      missingRetryCountRef.current = 0
 
       const resolvedColorPage = colorPage
         ?? (data?.coloringPage?.id && data.coloringPage.id !== 'upload'
           ? getPageById(data.coloringPage.id)
           : null)
 
-      buildColorTogetherImage(players.map(([, p]) => p), resolvedColorPage)
+      buildColorTogetherImage(patchedPlayers.map(([, p]) => p), resolvedColorPage)
         .then(url => {
           setCombinedUrl(url)
           pendingConfettiRef.current = true
@@ -344,7 +363,7 @@ export default function RevealScreen() {
           buildInitiatedRef.current = false
         })
     })
-    return unsub
+    return () => { unsub(); clearTimeout(retryTimerRef.current) }
   }, [code])
 
   // ── Auto-dismiss confetti after 4.2s ──────────────────────────────────────
@@ -396,6 +415,8 @@ export default function RevealScreen() {
 
   // ── Retry after error ─────────────────────────────────────────────────────
   function handleRetry() {
+    clearTimeout(retryTimerRef.current)
+    retryTimerRef.current = null
     setError(null)
     setPhase('loading')
     buildInitiatedRef.current = false
@@ -410,16 +431,45 @@ export default function RevealScreen() {
         setShowConfetti(true)
         setPhase('reveal')
         buildInitiatedRef.current = true
-      } else {
-        setError('Artwork snapshot not found.')
-        setPhase('error')
+        return
       }
+      // Fallback: Firebase snapshot URL (mirrors initial load behavior).
+      const firebaseUrl = data.players?.[playerId]?.canvasSnapshotUrl
+      if (firebaseUrl) {
+        const resolvedColorPage = colorPage
+          ?? (data?.coloringPage?.id && data.coloringPage.id !== 'upload'
+            ? getPageById(data.coloringPage.id)
+            : null)
+        buildColorTogetherImage([{ canvasSnapshotUrl: firebaseUrl }], resolvedColorPage)
+          .then(url => {
+            setCombinedUrl(url)
+            setShowConfetti(true)
+            setPhase('reveal')
+            buildInitiatedRef.current = true
+          })
+          .catch(() => {
+            setError('Artwork snapshot not found.')
+            setPhase('error')
+          })
+        return
+      }
+      setError('Artwork snapshot not found.')
+      setPhase('error')
       return
     }
 
     const players = Object.entries(data.players || {})
       .filter(([, p]) => p.name && !p.left && p.assignedSection)
-    const missing = players.filter(([, p]) => !p.canvasSnapshotUrl)
+
+    // Patch local player's missing snapshot from sessionStorage transparent fallback.
+    const transparentFallback = sessionStorage.getItem(`colorsplit_transparent_snapshot_${code}_${playerId}`)
+    const patchedPlayers = players.map(([pid, p]) =>
+      pid === playerId && !p.canvasSnapshotUrl && transparentFallback
+        ? [pid, { ...p, canvasSnapshotUrl: transparentFallback }]
+        : [pid, p]
+    )
+
+    const missing = patchedPlayers.filter(([, p]) => !p.canvasSnapshotUrl)
     if (missing.length > 0) {
       setError('Reveal image is still preparing. Try again in a moment.')
       setPhase('error')
@@ -431,7 +481,7 @@ export default function RevealScreen() {
       ?? (data?.coloringPage?.id && data.coloringPage.id !== 'upload'
         ? getPageById(data.coloringPage.id)
         : null)
-    buildColorTogetherImage(players.map(([, p]) => p), resolvedColorPage)
+    buildColorTogetherImage(patchedPlayers.map(([, p]) => p), resolvedColorPage)
       .then(url => {
         setCombinedUrl(url)
         setShowConfetti(true)
@@ -443,6 +493,7 @@ export default function RevealScreen() {
         buildInitiatedRef.current = false
       })
   }
+  handleRetryRef.current = handleRetry
 
   // ── Gallery save ──────────────────────────────────────────────────────────
   async function doSaveArtwork() {
