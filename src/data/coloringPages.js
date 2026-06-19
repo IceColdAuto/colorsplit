@@ -65,15 +65,6 @@ export const coloringPages = [
     tags: ['animals', 'kawaii', 'food'],
   },
   {
-    id: 'garden-baking-party',
-    title: 'Garden Baking Party',
-    imageUrl: '/coloring-pages/garden-baking-party.png',
-    thumbnailUrl: '/coloring-pages/garden-baking-party.png',
-    difficulty: 'hard',
-    estimatedMinutes: 20,
-    tags: ['animals', 'kawaii', 'food'],
-  },
-  {
     id: 'snails-mushroom-creek',
     title: "Snail's Mushroom Creek",
     imageUrl: '/coloring-pages/mushroom-waterfall.png',
@@ -162,15 +153,5 @@ export const coloringPages = [
     estimatedMinutes: 25,
     category: 'fantasy',
     tags: ['Fantasy', 'Art', 'Studio'],
-  },
-  {
-    id: 'hot-cocoa-snow-stand',
-    title: 'Hot Cocoa Snow Stand',
-    imageUrl: '/coloring-pages/hot-cocoa-snow-stand.png',
-    thumbnailUrl: '/coloring-pages/hot-cocoa-snow-stand.png',
-    difficulty: 'hard',
-    estimatedMinutes: 25,
-    category: 'scenes',
-    tags: ['Winter', 'Cozy', 'Animals'],
   },
 ]
