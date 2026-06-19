@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /sessionSnapshots/{code}/{fileName} {
+      allow read: if true;
+
+      allow write: if
+        request.resource.size < 5 * 1024 * 1024
+        && (
+          request.resource.contentType == 'image/png'
+          || request.resource.contentType == 'image/jpeg'
+        )
+        && code.matches('^[A-Za-z0-9_-]{4,64}$')
+        && (
+          fileName.matches('^[A-Za-z0-9_-]+\\.png$')
+          || fileName.matches('^[A-Za-z0-9_-]+\\.jpg$')
+        );
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
