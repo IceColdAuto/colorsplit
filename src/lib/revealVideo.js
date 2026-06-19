@@ -12,6 +12,7 @@
 //
 // Rendered offscreen and recorded with captureStream() + MediaRecorder.
 
+import * as Sentry from '@sentry/react'
 import { drawStroke } from './canvasUtils'
 
 const SIZE = 800
@@ -248,6 +249,7 @@ export async function shareOrDownloadVideo({ blob, mimeType, ext }, code) {
       return 'shared'
     } catch (e) {
       if (e?.name === 'AbortError') return 'shared' // user closed the sheet
+      Sentry.captureException(e)
     }
   }
   const url = URL.createObjectURL(blob)
@@ -272,6 +274,7 @@ export async function shareOrDownloadImage(dataUrl, code) {
         return 'shared'
       } catch (e) {
         if (e?.name === 'AbortError') return 'shared'
+        Sentry.captureException(e)
       }
     }
   } catch {}

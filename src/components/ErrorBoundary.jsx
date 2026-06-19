@@ -1,4 +1,5 @@
 import { Component } from 'react'
+import * as Sentry from '@sentry/react'
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -14,6 +15,7 @@ export default class ErrorBoundary extends Component {
     console.error('[ColorSplit] Render error:', error.message)
     console.error('[ColorSplit] Stack:', error.stack)
     console.error('[ColorSplit] Component stack:', info?.componentStack)
+    Sentry.captureException(error, { extra: { componentStack: info?.componentStack } })
   }
 
   render() {
