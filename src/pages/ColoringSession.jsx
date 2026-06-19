@@ -93,6 +93,7 @@ export default function ColoringSession() {
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [panMode, setPanMode] = useState(false)
   const [isDone, setIsDone] = useState(false)
+  const [donePhase, setDonePhase] = useState(null) // null | 'uploading' | 'waiting'
   const [othersDoneNames, setOthersDoneNames] = useState([])
   const [partnerDoneToast, setPartnerDoneToast] = useState(null) // { message, colorHex } | null
   const [showDoneConfirm, setShowDoneConfirm] = useState(false)
@@ -918,6 +919,31 @@ export default function ColoringSession() {
     }
   }, [])
 
+  // Safari/WebKit discards canvas GPU backing stores when a tab is backgrounded.
+  // The React component stays mounted, so the mount-time stroke restore does not
+  // re-run. On resume, replay all committed strokes from the in-memory mirror so
+  // white spots caused by partial canvas clearing are immediately healed.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      // A touch interrupted by a system event (phone call, notification) may leave
+      // isDrawingRef stuck at true — reset it so recovery isn't blocked forever.
+      isDrawingRef.current = false
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
+      Object.values(myStrokesRef.current)
+        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+        .forEach(stroke => { if (stroke?.points?.length) drawStroke(ctx, stroke) })
+      applyAllowedMask(ctx)
+      calculateProgress()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, []) // all access through stable refs — no deps needed
+
   function resetView() {
     const el = containerRef.current
     if (!el) { setZoom(1); setPan({ x: 0, y: 0 }); return }
@@ -979,8 +1005,9 @@ export default function ColoringSession() {
     saveCanvasForReveal()
     setIsDone(true)
     setShowDoneConfirm(false)
-    // Upload color canvas snapshot to Firebase Storage for reveal fallback (solo + Color Together).
+    // Upload color canvas snapshot to Firebase Storage for reveal (solo + tear mode).
     if (session?.settings?.mode === 'tear' || session?.settings?.mode === 'solo') {
+      setDonePhase('uploading')
       try {
         const dataUrl = captureColorSnapshot()
         if (dataUrl) {
@@ -988,9 +1015,11 @@ export default function ColoringSession() {
           await setPlayerSnapshotUrl(code, playerId, url)
         }
       } catch (err) {
-        console.warn('[ColorSplit] Snapshot upload failed — falling back to stroke reconstruction:', err?.message)
+        console.warn('[ColorSplit] Snapshot upload failed — reveal will retry from strokes:', err?.message)
+        // Upload failure is non-fatal: RevealScreen shows a retry prompt if snapshot is missing.
       }
     }
+    setDonePhase('waiting')
     // Flush in-flight stroke writes before marking done in Firebase so
     // getAllStrokes on the reveal screen sees the complete set of strokes.
     const pendingWrites = [...pendingStrokeWritesRef.current]
@@ -1306,6 +1335,7 @@ export default function ColoringSession() {
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchEnd}
           />
           {/* Local in-progress stroke preview (pencil only) */}
           <canvas
@@ -1463,9 +1493,20 @@ export default function ColoringSession() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-ink/80 backdrop-blur-sm text-white px-5 py-3 rounded-2xl font-body text-sm"
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-ink/80 backdrop-blur-sm text-white px-5 py-3 rounded-2xl font-body text-sm flex items-center gap-2"
         >
-          Waiting for others…
+          {donePhase === 'uploading' ? (
+            <>
+              <motion.span
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}
+                className="inline-block"
+              >⏳</motion.span>
+              Saving your artwork…
+            </>
+          ) : (
+            <>Waiting for others…</>
+          )}
         </motion.div>
       )}
     </div>

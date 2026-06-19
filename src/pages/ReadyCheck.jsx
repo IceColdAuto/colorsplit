@@ -18,6 +18,7 @@ export default function ReadyCheck() {
   const [abandonedByName, setAbandonedByName] = useState(null)
   const countdownStarted = useRef(false)
   const isLeavingRef = useRef(false)
+  const countdownIntervalRef = useRef(null)
 
   useEffect(() => setupPresence(code, playerId), [code, playerId])
 
@@ -47,18 +48,26 @@ export default function ReadyCheck() {
   function startCountdown() {
     let n = 3
     setCountdown(n)
-    const iv = setInterval(() => {
+    countdownIntervalRef.current = setInterval(() => {
       n -= 1
       if (n <= 0) {
-        clearInterval(iv)
+        clearInterval(countdownIntervalRef.current)
+        countdownIntervalRef.current = null
         setCountdown(0)
+        if (isLeavingRef.current) return
         updateSessionStatus(code, 'coloring').catch(() => {})
-        setTimeout(() => navigate(`/session/${code}/color`), 300)
+        setTimeout(() => { if (!isLeavingRef.current) navigate(`/session/${code}/color`) }, 300)
       } else {
         setCountdown(n)
       }
     }, 1000)
   }
+
+  useEffect(() => {
+    return () => {
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current)
+    }
+  }, [])
 
   async function handleLeaveConfirm() {
     isLeavingRef.current = true
