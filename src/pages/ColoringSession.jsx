@@ -1217,9 +1217,9 @@ export default function ColoringSession() {
             {!isSolo && (() => {
               const myColorHex = AVATAR_COLORS.find(c => c.id === session?.players?.[playerId]?.colorId)?.hex || '#E0D4FF'
               return (
-                <div className="flex flex-wrap gap-1 w-full justify-center">
+                <div className="grid grid-cols-2 gap-1 w-full">
                   <span
-                    className="flex-shrink-0 text-[10px] font-semibold font-body text-ink/70 px-2 py-0.5 rounded-full leading-none"
+                    className="truncate text-[10px] font-semibold font-body text-ink/70 px-2 py-0.5 rounded-full leading-none"
                     style={{ background: myColorHex }}
                   >
                     You {isDone ? '✓' : `${progress}%`}
@@ -1229,7 +1229,7 @@ export default function ColoringSession() {
                     return (
                       <span
                         key={i}
-                        className="flex-shrink-0 text-[10px] font-semibold font-body text-ink/70 px-2 py-0.5 rounded-full leading-none"
+                        className="truncate text-[10px] font-semibold font-body text-ink/70 px-2 py-0.5 rounded-full leading-none"
                         style={{ background: hex }}
                       >
                         {(p.name || 'Friend').split(' ')[0]} {p.done ? '✓' : `${p.progress || 0}%`}
