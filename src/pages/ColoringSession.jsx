@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { logBetaEvent } from '../lib/analytics'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   subscribeToSession, subscribeToStrokes, addStroke, getAllStrokes,
@@ -144,6 +145,7 @@ export default function ColoringSession() {
   const lastTapRef = useRef(0)            // double-tap-to-reset detection
   const gesturePinchedRef = useRef(false) // a 2-finger gesture happened this touch sequence
   const pendingStrokeWritesRef = useRef(new Set()) // tracks in-flight addStroke promises for flush-before-done
+  const coloringStartedFired = useRef(false)
 
   // Derived from state — must be declared before any useCallback that references it in deps
   const size = tool === 'eraser' ? eraserSize : pencilSize
@@ -211,6 +213,11 @@ export default function ColoringSession() {
       // Unknown player: not in this session — send to join instead of creating a phantom entry
       if (!data.players?.[playerId]) { navigate(`/join/${code}`, { replace: true }); return }
       setIsPlayerValid(true)
+      if (!coloringStartedFired.current) {
+        coloringStartedFired.current = true
+        const count = Object.values(data.players || {}).filter(p => p.name && !p.left).length
+        logBetaEvent('coloring_started', { player_count: count })
+      }
 
       // Fairness: another player leaving must NEVER block or erase this player's
       // work. Track who left for an informational banner and keep going — their

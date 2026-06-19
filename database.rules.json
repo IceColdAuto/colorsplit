@@ -89,6 +89,14 @@
       }
     },
 
+    "beta_events": {
+      ".read": false,
+      "$eventId": {
+        ".write": "!data.exists()",
+        ".validate": "newData.hasChildren(['event','ts']) && newData.child('event').isString() && newData.child('event').val().matches(/^(app_open|flow_selected|coloring_started|reveal_viewed|gallery_saved|play_again)$/) && newData.child('ts').isNumber()"
+      }
+    },
+
     "invites": {
       "$toUid": {
         ".read": "auth != null && auth.uid === $toUid",

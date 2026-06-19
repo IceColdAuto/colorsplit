@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { logBetaEvent } from '../lib/analytics'
 import { getPageById } from '../lib/coloringPages'
 import {
   subscribeToSession,
@@ -215,6 +216,7 @@ export default function RevealScreen() {
   const pendingConfettiRef = useRef(false)
 
   const autosaveRef = useRef(false)
+  const revealViewedFired = useRef(false)
   // Stable completedAt across retries: once set from doneAt or Date.now(), never changes for this session.
   const completedAtRef = useRef(null)
   const buildInitiatedRef = useRef(false)
@@ -383,6 +385,12 @@ export default function RevealScreen() {
     doSaveArtwork()
   }, [phase, combinedUrl, sessionData])
 
+  useEffect(() => {
+    if (phase !== 'reveal' || revealViewedFired.current) return
+    revealViewedFired.current = true
+    logBetaEvent('reveal_viewed')
+  }, [phase])
+
   // ── Auto-open replay once per session when artwork is ready ───────────────
   useEffect(() => {
     if (phase !== 'reveal' || !combinedUrl || !sessionData || autoReplayRef.current) return
@@ -540,6 +548,7 @@ export default function RevealScreen() {
     }
     setIsSaving(false)
     if (ok) {
+      logBetaEvent('gallery_saved')
       setSaveResult('saved')
       setTimeout(() => setSaveResult(null), 3200)
     } else {
@@ -597,6 +606,7 @@ export default function RevealScreen() {
 
   // ── Play Again ────────────────────────────────────────────────────────────
   async function handleAgain() {
+    logBetaEvent('play_again')
     if (isSolo) {
       const keys = [
         `colorsplit_page_${code}`,

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { logBetaEvent } from '../lib/analytics'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   createSession, joinSession, getOrCreatePlayerId, getOrCreatePlayerName,
@@ -35,10 +36,17 @@ export default function HomeScreen() {
   const [resumeRoom, setResumeRoom] = useState(null)
   const { user, profile: cloudProfile, authAvailable, loading: authLoading, profileLoading } = useAuth()
   const hadUser = useRef(false)
+  const appOpenFired = useRef(false)
   const [showAuth, setShowAuth] = useState(false)
   const [invites, setInvites] = useState([])
   const [inviteBusy, setInviteBusy] = useState(null) // invite id being joined
   const [inviteError, setInviteError] = useState('')
+
+  useEffect(() => {
+    if (appOpenFired.current) return
+    appOpenFired.current = true
+    logBetaEvent('app_open')
+  }, [])
 
   // Incoming friend invites — signed-in users only, live-updated.
   useEffect(() => {
@@ -193,6 +201,7 @@ export default function HomeScreen() {
   }
 
   async function handleCreate() {
+    logBetaEvent('flow_selected', { flow: 'together' })
     setCreating(true)
     setCreateError('')
     if (!navigator.onLine) {
@@ -234,6 +243,7 @@ export default function HomeScreen() {
   }
 
   async function handleSolo() {
+    logBetaEvent('flow_selected', { flow: 'solo' })
     setSoloCreating(true)
     setSoloError('')
     if (!navigator.onLine) {
