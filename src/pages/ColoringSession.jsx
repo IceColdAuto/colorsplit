@@ -1195,7 +1195,7 @@ export default function ColoringSession() {
             truncated away). Row 3 (multiplayer): per-player breakdown. */}
         <div className="flex items-center flex-1 justify-center min-w-0 px-1.5">
           <div
-            className="flex flex-col items-center gap-1 min-w-0 w-full max-w-[240px] bg-white rounded-2xl px-4 py-2 border border-ink/10"
+            className="flex flex-col items-center gap-0.5 min-w-0 w-full max-w-[240px] bg-white rounded-2xl px-4 py-1 border border-ink/10"
             style={{ boxShadow: '0 4px 12px rgba(45,36,22,0.14)' }}
           >
             <div className="flex items-center gap-2 w-full">
@@ -1210,7 +1210,7 @@ export default function ColoringSession() {
               </span>
             </div>
             {/* Fun phrase — the star, full contrast, always visible */}
-            <span className="text-[12px] font-bold font-body text-violet-600 truncate w-full text-center leading-tight">
+            <span className="hidden sm:block text-[12px] font-bold font-body text-violet-600 truncate w-full text-center leading-tight">
               {progressPhrase(combinedProgress, isSolo)}
             </span>
             {/* Per-player chips (multiplayer only) — scrollable for 3–4 players */}
