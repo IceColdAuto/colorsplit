@@ -1195,7 +1195,7 @@ export default function ColoringSession() {
             truncated away). Row 3 (multiplayer): per-player breakdown. */}
         <div className="flex items-center flex-1 justify-center min-w-0 px-1.5">
           <div
-            className="flex flex-col items-center gap-0.5 min-w-0 w-full max-w-[240px] bg-white rounded-2xl px-4 py-1 border border-ink/10"
+            className="flex flex-col items-center gap-0.5 min-w-0 w-full max-w-[240px] bg-white rounded-2xl px-3 py-1 border border-ink/10"
             style={{ boxShadow: '0 4px 12px rgba(45,36,22,0.14)' }}
           >
             <div className="flex items-center gap-2 w-full">
@@ -1219,20 +1219,22 @@ export default function ColoringSession() {
               return (
                 <div className="grid grid-cols-2 gap-1 w-full">
                   <span
-                    className="truncate text-[10px] font-semibold font-body text-ink/70 px-2 py-0.5 rounded-full leading-none"
+                    className="flex items-center gap-0.5 min-w-0 text-[10px] font-semibold font-body text-ink/70 px-1 py-0.5 rounded-full leading-none"
                     style={{ background: myColorHex }}
                   >
-                    You {isDone ? '✓' : `${progress}%`}
+                    <span className="truncate min-w-0">You</span>
+                    <span className="flex-shrink-0">{isDone ? '✓' : `${progress}%`}</span>
                   </span>
                   {activePartners.map((p, i) => {
                     const hex = AVATAR_COLORS.find(c => c.id === p.colorId)?.hex || '#C8F0DC'
                     return (
                       <span
                         key={i}
-                        className="truncate text-[10px] font-semibold font-body text-ink/70 px-2 py-0.5 rounded-full leading-none"
+                        className="flex items-center gap-0.5 min-w-0 text-[10px] font-semibold font-body text-ink/70 px-1 py-0.5 rounded-full leading-none"
                         style={{ background: hex }}
                       >
-                        {(p.name || 'Friend').split(' ')[0]} {p.done ? '✓' : `${p.progress || 0}%`}
+                        <span className="truncate min-w-0">{(p.name || 'Friend').split(' ')[0]}</span>
+                        <span className="flex-shrink-0">{p.done ? '✓' : `${p.progress || 0}%`}</span>
                       </span>
                     )
                   })}
