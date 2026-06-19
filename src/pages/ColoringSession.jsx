@@ -1217,7 +1217,7 @@ export default function ColoringSession() {
             {!isSolo && (() => {
               const myColorHex = AVATAR_COLORS.find(c => c.id === session?.players?.[playerId]?.colorId)?.hex || '#E0D4FF'
               return (
-                <div className="flex gap-1 overflow-x-auto w-full justify-center" style={{ scrollbarWidth: 'none' }}>
+                <div className="flex flex-wrap gap-1 w-full justify-center">
                   <span
                     className="flex-shrink-0 text-[10px] font-semibold font-body text-ink/70 px-2 py-0.5 rounded-full leading-none"
                     style={{ background: myColorHex }}
