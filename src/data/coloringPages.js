@@ -154,4 +154,14 @@ export const coloringPages = [
     category: 'fantasy',
     tags: ['Fantasy', 'Art', 'Studio'],
   },
+  {
+    id: 'forest-campfire-friends',
+    title: 'Forest Campfire Friends',
+    imageUrl: '/coloring-pages/forest-campfire-friends.png',
+    thumbnailUrl: '/coloring-pages/forest-campfire-friends.png',
+    difficulty: 'hard',
+    estimatedMinutes: 20,
+    category: 'nature',
+    tags: ['Nature', 'Camping', 'Monsters'],
+  },
 ]
