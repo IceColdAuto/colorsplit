@@ -416,26 +416,6 @@ export default function TearScreen() {
       const others = Object.entries(data.players || {}).filter(([pid]) => pid !== playerId)
       const othersActive = others.filter(([, p]) => p.name && !p.left)
       const othersLeft = others.filter(([, p]) => p.left)
-      // ── TEMP DEBUG (controller leave/disconnect detection) ──
-      const dbgControllerId = data.roundControllerId || data.hostId
-      const dbgControllerPlayer = data.players?.[dbgControllerId]
-      console.warn('[TearScreen][sub] snapshot', {
-        playerId,
-        status: data.status,
-        hostId: data.hostId,
-        roundControllerId: data.roundControllerId,
-        controllerId: dbgControllerId,
-        controllerName: dbgControllerPlayer?.name,
-        controllerLeft: dbgControllerPlayer?.left,
-        controllerConnected: dbgControllerPlayer?.connected,
-        controllerLastSeenAt: dbgControllerPlayer?.lastSeenAt,
-        controllerIsSelf: dbgControllerId === playerId,
-        controllerLeftBranchReached: dbgControllerId !== playerId && dbgControllerPlayer?.left === true,
-        players: Object.entries(data.players || {}).map(([id, p]) => ({
-          id, name: p.name, left: p.left, connected: p.connected, lastSeenAt: p.lastSeenAt,
-        })),
-      })
-      // ── END TEMP DEBUG ──
       if (othersLeft.length > 0 && othersActive.length === 0) {
         setAbandonedByName(othersLeft[0][1].name || 'The other player'); return
       }
@@ -464,10 +444,8 @@ export default function TearScreen() {
   async function handleLeaveConfirm() {
     isLeavingRef.current = true
     setShowLeaveModal(false)
-    console.warn('[TearScreen][leave] handleLeaveConfirm → calling leaveRoom', { code, playerId })
     try {
       await leaveRoom(code, playerId)
-      console.warn('[TearScreen][leave] leaveRoom resolved OK', { code, playerId })
     } catch (err) {
       console.warn('[TearScreen][leave] leaveRoom THREW', err)
     }
@@ -497,13 +475,6 @@ export default function TearScreen() {
         disconnectTimerRef.current = null
       }
     }
-    // ── TEMP DEBUG (disconnect timer) ──
-    console.warn('[TearScreen][timer] effect run', {
-      playerId, controllerId, isController, controllerLeft, controllerConnected,
-      willArm: !(isController || controllerLeft === true || controllerConnected !== false),
-      alreadyArmed: !!disconnectTimerRef.current,
-    })
-    // ── END TEMP DEBUG ──
     // No timer needed when: we are the controller, the controller is gone via
     // explicit leave (handled immediately elsewhere), or it's connected/unknown.
     if (isController || controllerLeft === true || controllerConnected !== false) {
@@ -511,20 +482,11 @@ export default function TearScreen() {
       return
     }
     if (!disconnectTimerRef.current) {
-      console.warn('[TearScreen][timer] ARMED 9000ms disconnect timer', { controllerId, controllerConnected, controllerLeft })
       disconnectTimerRef.current = setTimeout(() => {
         disconnectTimerRef.current = null
         // Re-check against the latest session: only end the room if the
         // controller is STILL disconnected, hasn't left, and hasn't reconnected.
         const latest = session?.players?.[controllerId]
-        console.warn('[TearScreen][timer] FIRED — re-check', {
-          controllerId,
-          latestName: latest?.name,
-          latestLeft: latest?.left,
-          latestConnected: latest?.connected,
-          latestLastSeenAt: latest?.lastSeenAt,
-          willAbandon: controllerId !== playerId && !!latest && latest.left !== true && latest.connected === false,
-        })
         if (controllerId !== playerId && latest && latest.left !== true && latest.connected === false) {
           setAbandonedByName(latest.name || 'The host')
         }
