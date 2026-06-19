@@ -209,11 +209,14 @@ export default function RevealScreen() {
   const [soloStartError, setSoloStartError] = useState('')
 
   const [showReplay, setShowReplay] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
 
   const autoReplayRef = useRef(false)
   const pendingConfettiRef = useRef(false)
 
   const autosaveRef = useRef(false)
+  // Stable completedAt across retries: once set from doneAt or Date.now(), never changes for this session.
+  const completedAtRef = useRef(null)
   const buildInitiatedRef = useRef(false)
   const resetInitiatedRef = useRef(false)
   const sessionRef = useRef(null)
@@ -497,7 +500,8 @@ export default function RevealScreen() {
 
   // ── Gallery save ──────────────────────────────────────────────────────────
   async function doSaveArtwork() {
-    if (!combinedUrl || !sessionData) return
+    if (!combinedUrl || !sessionData || isSaving) return
+    setIsSaving(true)
     const players = Object.entries(sessionData.players || {})
       .filter(([, p]) => p.name)
       .map(([id, p]) => ({ id, name: p.name, left: !!p.left }))
@@ -506,8 +510,11 @@ export default function RevealScreen() {
       || sessionData?.coloringPage?.id
       || loadGallery().find(a => a.code === code)?.pageId
       || ''
-    const doneAt = sessionData.players?.[playerId]?.doneAt
-    const completedAt = doneAt || Date.now()
+    // Stable id across retries: capture completedAt once and reuse it.
+    if (!completedAtRef.current) {
+      completedAtRef.current = sessionData.players?.[playerId]?.doneAt || Date.now()
+    }
+    const completedAt = completedAtRef.current
     const { ok, entry } = saveArtwork({
       id: `${code}_${completedAt}`,
       code,
@@ -531,8 +538,14 @@ export default function RevealScreen() {
         .then(() => markArtworkMigrated(entry.id, user.uid, entry.id))
         .catch(e => console.warn('Cloud gallery save failed:', e?.message))
     }
-    setSaveResult(ok ? 'saved' : 'failed')
-    setTimeout(() => setSaveResult(null), 3200)
+    setIsSaving(false)
+    if (ok) {
+      setSaveResult('saved')
+      setTimeout(() => setSaveResult(null), 3200)
+    } else {
+      setSaveResult('failed')
+      // 'failed' is intentionally not auto-cleared — user must tap Save again.
+    }
   }
 
   // ── Download ──────────────────────────────────────────────────────────────
@@ -706,16 +719,27 @@ export default function RevealScreen() {
           >
             Masterpiece!
           </h1>
-          <p className="font-body text-xs font-semibold text-green-600 mt-1">
-            {isSolo ? '✓ Saved to your gallery' : '✓ Saved to your gallery'}
-          </p>
+          {saveResult !== 'failed' && (
+            <p className="font-body text-xs font-semibold text-green-600 mt-1">
+              ✓ Saved to your gallery
+            </p>
+          )}
         </div>
 
-        {/* Save error only — success is shown in the subtitle above */}
+        {/* Save failure with retry */}
         {saveResult === 'failed' && (
-          <p className="font-body text-xs font-semibold text-red-500">
-            ⚠️ Couldn't save — device storage may be full
-          </p>
+          <div className="flex flex-col items-center gap-2">
+            <p className="font-body text-xs font-semibold text-red-500">
+              ⚠️ Couldn't save — device storage may be full
+            </p>
+            <button
+              onClick={doSaveArtwork}
+              disabled={isSaving}
+              className="bg-red-50 border border-red-200 text-red-600 font-semibold py-2 px-5 rounded-2xl font-body text-xs active:scale-95 transition-transform disabled:opacity-50"
+            >
+              {isSaving ? 'Saving…' : 'Save again'}
+            </button>
+          </div>
         )}
 
         {/* Final artwork */}
