@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
 import ErrorBoundary from './components/ErrorBoundary'
 import HomeScreen from './pages/HomeScreen'
+import PrivacyScreen from './pages/PrivacyScreen'
+import TermsScreen from './pages/TermsScreen'
 import JoinScreen from './pages/JoinScreen'
 import LobbyScreen from './pages/LobbyScreen'
 import ColoringPagePicker from './pages/ColoringPagePicker'
@@ -19,6 +21,8 @@ export default function App() {
       <AnimatePresence mode="wait">
         <Routes>
           <Route path="/" element={<HomeScreen />} />
+          <Route path="/privacy" element={<PrivacyScreen />} />
+          <Route path="/terms" element={<TermsScreen />} />
           <Route path="/gallery" element={<GalleryScreen />} />
           <Route path="/join" element={<JoinScreen />} />
           <Route path="/join/:code" element={<JoinScreen />} />

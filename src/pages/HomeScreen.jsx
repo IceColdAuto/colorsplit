@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { logBetaEvent } from '../lib/analytics'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -702,6 +702,22 @@ export default function HomeScreen() {
           </motion.div>
         )}
 
+
+        {/* ── Footer links ──────────────────────────────────────────────── */}
+        <div className="mt-6 flex items-center gap-1.5 text-ink/35 font-body text-[12px]">
+          <a
+            href="https://docs.google.com/forms/d/e/1FAIpQLScTk35djLRuLmTNS0ZCdoHX9k7iT6ZrRXvKa7EJFqTET4kDwA/viewform"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-ink/60 transition-colors"
+          >
+            Send Feedback
+          </a>
+          <span>·</span>
+          <Link to="/privacy" className="hover:text-ink/60 transition-colors">Privacy</Link>
+          <span>·</span>
+          <Link to="/terms" className="hover:text-ink/60 transition-colors">Terms</Link>
+        </div>
 
       </div>
 
